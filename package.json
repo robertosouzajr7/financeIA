@@ -1,8 +1,10 @@
 {
-  "name": "base44-app",
+  "name": "financeia",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
+  "description": "FinanceIA - Plataforma SaaS de Gestão Financeira Pessoal com IA",
+  "author": "FinanceIA Team",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

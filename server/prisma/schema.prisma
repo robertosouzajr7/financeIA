@@ -177,10 +177,14 @@ model PaymentMethod {
 
 model KnowledgeDocument {
   id         String   @id @default(uuid())
+  title      String
   content    String
+  category   String?
   embedding  String?
   metadata   String?
+  is_active  Boolean  @default(true)
   created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 }
 
 model Alert {
@@ -265,4 +269,16 @@ model Debt {
   created_at      DateTime     @default(now())
   updated_at      DateTime     @updatedAt
   organization    Organization? @relation(fields: [organization_id], references: [id])
+}
+
+model ConversationMessage {
+  id         String   @id @default(uuid())
+  user_phone String
+  role       String   // 'user' or 'assistant'
+  content    String
+  has_media  Boolean  @default(false)
+  media_type String?  // 'image', 'document', 'video', 'audio', 'none'
+  media_url  String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 }
