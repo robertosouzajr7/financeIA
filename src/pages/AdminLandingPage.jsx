@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Save, Upload, Plus, Trash2, Eye, Layout } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { UploadFile } from "@/integrations/Core";
+import { UploadFile } from "@/api/integrations";
 
 export default function AdminLandingPage() {
   const [settings, setSettings] = useState(null);

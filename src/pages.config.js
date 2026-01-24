@@ -20,6 +20,8 @@ import AdminLandingPage from './pages/AdminLandingPage';
 import AuthenticatedUsers from './pages/AuthenticatedUsers';
 import RecurringExpenses from './pages/RecurringExpenses';
 import AdminEmails from './pages/AdminEmails';
+import Login from './pages/Login';
+import OrganizationSettings from './pages/OrganizationSettings';
 import Layout from './Layout.jsx';
 
 
@@ -46,6 +48,8 @@ export const PAGES = {
     "AuthenticatedUsers": AuthenticatedUsers,
     "RecurringExpenses": RecurringExpenses,
     "AdminEmails": AdminEmails,
+    "Login": Login,
+    "OrganizationSettings": OrganizationSettings,
 }
 
 export const pagesConfig = {

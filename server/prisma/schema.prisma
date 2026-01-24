@@ -1,0 +1,268 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                     String               @id @default(uuid())
+  user_phone             String               @unique
+  password_hash          String?
+  is_authenticated       Boolean              @default(false)
+  authentication_expires DateTime?
+  conversation_started   Boolean              @default(false)
+  last_authenticated     DateTime?
+  created_at             DateTime             @default(now())
+  updated_at             DateTime             @updatedAt
+  user_name              String?
+  organizations          OrganizationMember[]
+  budgets                Budget[]
+  transactions           FinancialTransaction[]
+  goals                  Goal[]
+  subscriptions          Subscription[]
+  whatsappInstances      WhatsAppInstance[]
+}
+
+model Organization {
+  id                String                 @id @default(uuid())
+  name              String
+  slug              String                 @unique // Para URLs amigáveis
+  stripe_customer_id String? // Stripe Customer ID
+  created_at        DateTime               @default(now())
+  updated_at        DateTime               @updatedAt
+  members           OrganizationMember[]
+  budgets           Budget[]
+  transactions      FinancialTransaction[]
+  goals             Goal[]
+  subscriptions     Subscription[]
+  alerts            Alert[]
+  recurringExpenses RecurringExpense[]
+  debts             Debt[]
+  whatsappInstances WhatsAppInstance[]
+}
+
+model OrganizationMember {
+  id              String       @id @default(uuid())
+  user_id         String
+  organization_id String
+  role            String       @default("MEMBER") // OWNER, ADMIN, MEMBER
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
+  user            User         @relation(fields: [user_id], references: [id])
+  organization    Organization @relation(fields: [organization_id], references: [id])
+
+  @@unique([user_id, organization_id])
+}
+
+model FinancialTransaction {
+  id              String       @id @default(uuid())
+  user_phone      String // Mantido para compatibilidade ou log de quem criou
+  organization_id String? // Opcional durante migração, depois obrigatório
+  description     String
+  amount          Float
+  date            DateTime
+  category        String
+  type            String
+  is_recurring    Boolean      @default(false)
+  priority        String?
+  source          String?
+  notes           String?
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
+  user            User         @relation(fields: [user_phone], references: [user_phone])
+  organization    Organization? @relation(fields: [organization_id], references: [id])
+}
+
+model Budget {
+  id              String       @id @default(uuid())
+  user_phone      String
+  organization_id String?
+  category        String
+  limit_amount    Float
+  period          String
+  alert_threshold Int          @default(80)
+  start_date      DateTime
+  is_active       Boolean      @default(true)
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
+  user            User         @relation(fields: [user_phone], references: [user_phone])
+  organization    Organization? @relation(fields: [organization_id], references: [id])
+}
+
+model Goal {
+  id              String       @id @default(uuid())
+  user_phone      String
+  organization_id String?
+  title           String
+  description     String?
+  target_amount   Float
+  current_amount  Float        @default(0)
+  priority        String?
+  timeline        String?
+  status          String
+  category        String?
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
+  user            User         @relation(fields: [user_phone], references: [user_phone])
+  organization    Organization? @relation(fields: [organization_id], references: [id])
+}
+
+model SystemSettings {
+  id                      String   @id @default(uuid())
+  enable_image_processing Boolean  @default(false)
+  claude_api_key          String?
+  created_at              DateTime @default(now())
+  updated_at              DateTime @updatedAt
+}
+
+model Plan {
+  id            String         @id @default(uuid())
+  name          String
+  description   String?
+  price         Float
+  currency      String         @default("BRL")
+  interval      String         @default("month") // month, year
+  features      String?        // JSON string with features
+  is_active     Boolean        @default(true)
+  created_at    DateTime       @default(now())
+  updated_at    DateTime       @updatedAt
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id              String       @id @default(uuid())
+  user_email      String       // Mantido para referência histórica
+  organization_id String?
+  plan_id         String?
+  status          String       @default("active") // active, canceled, past_due, trialing
+  current_period_end DateTime?
+  cancel_at_period_end Boolean @default(false)
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
+  
+  user            User         @relation(fields: [user_email], references: [user_phone])
+  organization    Organization? @relation(fields: [organization_id], references: [id])
+  plan            Plan?        @relation(fields: [plan_id], references: [id])
+  invoices        Invoice[]
+}
+
+model Invoice {
+  id              String       @id @default(uuid())
+  subscription_id String
+  amount          Float
+  currency        String       @default("BRL")
+  status          String       // paid, open, void, uncollectible
+  paid_at         DateTime?
+  hosted_invoice_url String?
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
+  subscription    Subscription @relation(fields: [subscription_id], references: [id])
+}
+
+model PaymentMethod {
+  id              String       @id @default(uuid())
+  organization_id String
+  type            String       // card, boleto, pix
+  last4           String?
+  brand           String?
+  exp_month       Int?
+  exp_year        Int?
+  is_default      Boolean      @default(false)
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
+}
+
+model KnowledgeDocument {
+  id         String   @id @default(uuid())
+  content    String
+  embedding  String?
+  metadata   String?
+  created_at DateTime @default(now())
+}
+
+model Alert {
+  id              String       @id @default(uuid())
+  user_phone      String
+  organization_id String?
+  title           String
+  message         String
+  severity        String       @default("info")
+  is_read         Boolean      @default(false)
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
+  organization    Organization? @relation(fields: [organization_id], references: [id])
+}
+
+model EmailTemplate {
+  id           String   @id @default(uuid())
+  display_name String
+  category     String
+  subject      String
+  description  String?
+  content      String
+  variables    String
+  is_active    Boolean  @default(true)
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+}
+
+model RecurringExpense {
+  id              String       @id @default(uuid())
+  user_phone      String
+  organization_id String?
+  description     String
+  amount          Float
+  category        String
+  frequency       String
+  due_day         Int
+  is_active       Boolean      @default(true)
+  send_reminder   Boolean      @default(true)
+  auto_create     Boolean      @default(false)
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
+  organization    Organization? @relation(fields: [organization_id], references: [id])
+}
+
+model SupportTicket {
+  id          String   @id @default(uuid())
+  user_email  String
+  subject     String
+  message     String
+  status      String   @default("open")
+  priority    String   @default("medium")
+  assigned_to String?
+  response    String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+}
+
+model WhatsAppInstance {
+  id              String       @id @default(uuid())
+  instance_name   String       @unique
+  phone_number    String?
+  status          String       @default("disconnected")
+  qr_code         String?
+  auth_state      String?
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
+  user_email      String?
+  organization_id String?
+  user            User?        @relation(fields: [user_email], references: [user_phone])
+  organization    Organization? @relation(fields: [organization_id], references: [id])
+}
+
+model Debt {
+  id              String       @id @default(uuid())
+  user_phone      String
+  organization_id String?
+  description     String
+  amount          Float
+  due_date        DateTime?
+  is_paid         Boolean      @default(false)
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
+  organization    Organization? @relation(fields: [organization_id], references: [id])
+}

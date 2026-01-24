@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Goal } from "@/entities/Goal";
-import { UploadFile } from "@/integrations/Core";
+import { UploadFile } from "@/api/integrations";
 import { Loader2 } from "lucide-react";
 import { FinancialTransaction } from "@/entities/FinancialTransaction"; // New import for FinancialTransaction
 

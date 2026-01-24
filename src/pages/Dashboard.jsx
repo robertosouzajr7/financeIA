@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
+import { useAuth } from "@/lib/AuthContext";
+import { api } from "@/api/client";
 import { WhatsAppInstance } from "@/entities/WhatsAppInstance";
-import { FinancialTransaction } from "@/entities/FinancialTransaction";
 import { Alert } from "@/entities/Alert";
-import { Smartphone, Users, DollarSign, AlertCircle } from "lucide-react";
+import { Smartphone, Users, DollarSign, AlertCircle, TrendingUp, TrendingDown } from "lucide-react";
 
 import MetricCard from "../components/dashboard/MetricCard";
 import InstancesOverview from "../components/dashboard/InstancesOverview";
@@ -11,6 +12,7 @@ import AlertsWidget from "../components/dashboard/AlertsWidget";
 import AccountBalance from "../components/dashboard/AccountBalance";
 
 export default function Dashboard() {
+  const { currentOrganization } = useAuth();
   const [stats, setStats] = useState({
     instances: 0,
     activeInstances: 0,
@@ -24,71 +26,68 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [instances, setInstances] = useState([]);
   const [recentAlerts, setRecentAlerts] = useState([]);
-  const [allTransactions, setAllTransactions] = useState([]);
-  const [userPhones, setUserPhones] = useState([]);
-  const [selectedUser, setSelectedUser] = useState("all");
 
   useEffect(() => {
-    loadDashboardData();
-  }, []);
-
-  useEffect(() => {
-    if (allTransactions.length > 0) {
-      calculateStats();
+    if (currentOrganization) {
+      loadDashboardData();
     }
-  }, [selectedUser, allTransactions]);
+  }, [currentOrganization]);
 
   const loadDashboardData = async () => {
     setIsLoading(true);
     
-    const [instancesData, transactionsData, alertsData] = await Promise.all([
-      WhatsAppInstance.list(),
-      FinancialTransaction.list(),
-      Alert.filter({ is_read: false }, "-created_date", 5)
-    ]);
+    try {
+      // Fetch Analytics Summary
+      const analyticsRes = await api.get('/analytics/summary');
+      const analytics = analyticsRes.data;
 
-    const activeInstances = instancesData.filter(i => i.is_connected);
-    const uniqueUsers = [...new Set(transactionsData.map(t => t.user_phone))];
+      // Fetch other entities (Interceptor handles x-org-id)
+      // Fetch other entities (Interceptor handles x-org-id)
+      const [instancesData, allAlerts] = await Promise.all([
+        WhatsAppInstance.list(),
+        Alert.filter({ is_read: false })
+      ]);
 
-    setInstances(instancesData);
-    setRecentAlerts(alertsData);
-    setAllTransactions(transactionsData);
-    setUserPhones(uniqueUsers);
-    
-    setIsLoading(false);
+      const activeInstances = instancesData.filter(i => i.is_connected);
+      
+      // Sort and slice alerts in frontend since backend crud doesn't support it yet
+      const alertsData = allAlerts
+        .sort((a, b) => new Date(b.created_date) - new Date(a.created_date))
+        .slice(0, 5);
+
+      setInstances(instancesData);
+      setRecentAlerts(alertsData);
+      
+      setStats({
+        instances: instancesData.length,
+        activeInstances: activeInstances.length,
+        users: analytics.memberCount || 0,
+        transactions: analytics.transactionCount,
+        alerts: alertsData.length,
+        totalIncome: analytics.totalIncome,
+        totalExpenses: analytics.totalExpense,
+        balance: analytics.netIncome
+      });
+
+    } catch (error) {
+      console.error("Error loading dashboard data:", error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const calculateStats = () => {
-    const filteredTransactions = selectedUser === "all" 
-      ? allTransactions 
-      : allTransactions.filter(t => t.user_phone === selectedUser);
-
-    const totalIncome = filteredTransactions
-      .filter(t => t.type === 'income')
-      .reduce((sum, t) => sum + t.amount, 0);
-    
-    const totalExpenses = filteredTransactions
-      .filter(t => t.type === 'expense')
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    setStats({
-      instances: instances.length,
-      activeInstances: instances.filter(i => i.is_connected).length,
-      users: userPhones.length,
-      transactions: filteredTransactions.length,
-      alerts: recentAlerts.length,
-      totalIncome,
-      totalExpenses,
-      balance: totalIncome - totalExpenses
-    });
-  };
+  if (!currentOrganization) {
+    return <div className="p-8 flex justify-center">Please select an organization.</div>;
+  }
 
   return (
     <div className="p-4 md:p-8 bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
       <div className="max-w-7xl mx-auto space-y-8">
         <div>
-          <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-2">Dashboard</h1>
-          <p className="text-slate-600">Visão geral do sistema FinanceIA</p>
+          <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-2">
+            Dashboard - {currentOrganization.name}
+          </h1>
+          <p className="text-slate-600">Visão geral financeira e operacional</p>
         </div>
 
         <AccountBalance 
@@ -96,9 +95,9 @@ export default function Dashboard() {
           totalExpenses={stats.totalExpenses}
           balance={stats.balance}
           isLoading={isLoading}
-          users={userPhones}
-          selectedUser={selectedUser}
-          onUserChange={setSelectedUser}
+          users={[]} // Removed user filter for now as analytics is aggregated
+          selectedUser="all"
+          onUserChange={() => {}}
         />
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -112,30 +111,30 @@ export default function Dashboard() {
             isLoading={isLoading}
           />
           <MetricCard
-            title="Membros Ativos"
-            value={stats.users}
-            subtitle="Usuários únicos"
-            icon={Users}
-            iconColor="text-blue-600"
-            bgColor="bg-blue-100"
-            isLoading={isLoading}
-          />
-          <MetricCard
             title="Transações"
             value={stats.transactions}
-            subtitle="Total registradas"
+            subtitle="No período"
             icon={DollarSign}
             iconColor="text-purple-600"
             bgColor="bg-purple-100"
             isLoading={isLoading}
           />
           <MetricCard
-            title="Alertas"
-            value={stats.alerts}
-            subtitle="Não lidos"
-            icon={AlertCircle}
-            iconColor="text-amber-600"
-            bgColor="bg-amber-100"
+            title="Receita"
+            value={`R$ ${stats.totalIncome.toFixed(2)}`}
+            subtitle="Total entradas"
+            icon={TrendingUp}
+            iconColor="text-green-600"
+            bgColor="bg-green-100"
+            isLoading={isLoading}
+          />
+          <MetricCard
+            title="Despesas"
+            value={`R$ ${stats.totalExpenses.toFixed(2)}`}
+            subtitle="Total saídas"
+            icon={TrendingDown}
+            iconColor="text-red-600"
+            bgColor="bg-red-100"
             isLoading={isLoading}
           />
         </div>

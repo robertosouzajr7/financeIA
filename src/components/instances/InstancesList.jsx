@@ -55,19 +55,19 @@ export default function InstancesList({ instances, isLoading, onRefresh }) {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4 flex-1">
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                    instance.is_connected ? 'bg-emerald-100' : 'bg-slate-100'
+                    instance.status === 'connected' ? 'bg-emerald-100' : 'bg-slate-100'
                   }`}>
                     <Smartphone className={`w-6 h-6 ${
-                      instance.is_connected ? 'text-emerald-600' : 'text-slate-400'
+                      instance.status === 'connected' ? 'text-emerald-600' : 'text-slate-400'
                     }`} />
                   </div>
                   <div className="flex-1">
                     <h3 className="font-semibold text-slate-900 mb-1">{instance.instance_name}</h3>
                     <div className="flex items-center gap-3 text-sm text-slate-600">
-                      {instance.phone && <span>{instance.phone}</span>}
-                      {instance.last_connection && (
+                      {instance.phone_number && <span>{instance.phone_number}</span>}
+                      {instance.updated_at && (
                         <span className="text-xs">
-                          Última conexão: {format(new Date(instance.last_connection), "dd/MM/yy HH:mm")}
+                          Atualizado: {format(new Date(instance.updated_at), "dd/MM/yy HH:mm")}
                         </span>
                       )}
                     </div>
@@ -77,13 +77,13 @@ export default function InstancesList({ instances, isLoading, onRefresh }) {
                   <Badge 
                     variant="outline" 
                     className={`border ${
-                      instance.is_connected 
+                      instance.status === 'connected'
                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
                         : 'bg-slate-100 text-slate-600 border-slate-200'
                     }`}
                   >
-                    <Circle className={`w-2 h-2 mr-2 fill-current ${instance.is_connected ? 'text-emerald-500' : 'text-slate-400'}`} />
-                    {instance.is_connected ? 'Online' : 'Offline'}
+                    <Circle className={`w-2 h-2 mr-2 fill-current ${instance.status === 'connected' ? 'text-emerald-500' : 'text-slate-400'}`} />
+                    {instance.status === 'connected' ? 'Online' : instance.status === 'connecting' ? 'Conectando...' : 'Offline'}
                   </Badge>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>

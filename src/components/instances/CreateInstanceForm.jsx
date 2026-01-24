@@ -1,15 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Loader2, CheckCircle, Smartphone, QrCode } from "lucide-react";
-import { createEvolutionInstance } from "@/functions/createEvolutionInstance";
-import { checkInstanceConnection } from "@/functions/checkInstanceConnection";
+import { api } from "@/api/client";
 
 export default function CreateInstanceForm({ onSuccess }) {
   const [formData, setFormData] = useState({
     instance_name: "",
-    phone: ""
   });
   const [isCreating, setIsCreating] = useState(false);
   const [qrCode, setQrCode] = useState(null);
@@ -24,48 +22,67 @@ export default function CreateInstanceForm({ onSuccess }) {
     setError(null);
 
     try {
-      const { data } = await createEvolutionInstance(formData);
+      // Create instance
+      const createResponse = await api.post('/whatsapp-instances', formData);
+      const instance = createResponse.data;
+      setInstanceId(instance.id);
 
-      if (data.success) {
-        setQrCode(data.qr_code);
-        setInstanceId(data.instance.instance_id);
-        startConnectionCheck(data.instance.instance_id);
-      } else {
-        throw new Error(data.error || "Erro ao criar instância");
-      }
+      // Start connection
+      await api.post(`/whatsapp-instances/${instance.id}/start`);
+
+      // Start polling for QR code
+      startQRCodePolling(instance.id);
     } catch (error) {
       console.error("Erro ao criar instância:", error);
-      setError(error.message || "Erro ao criar instância. Tente novamente.");
+      setError(error.response?.data?.error || "Erro ao criar instância. Tente novamente.");
     } finally {
       setIsCreating(false);
     }
   };
 
-  const startConnectionCheck = (instId) => {
+  const startQRCodePolling = (instId) => {
     setIsChecking(true);
     
-    const checkInterval = setInterval(async () => {
+    const pollInterval = setInterval(async () => {
       try {
-        const response = await checkInstanceConnection({ instance_id: instId });
+        // Try to get QR code
+        try {
+          const qrResponse = await api.get(`/whatsapp-instances/${instId}/qrcode`);
+          if (qrResponse.data.qr_code) {
+            setQrCode(qrResponse.data.qr_code);
+          }
+        } catch (qrError) {
+          // QR code not available yet
+          console.log("QR code not ready yet");
+        }
+
+        // Check if connected
+        const instanceResponse = await api.get(`/whatsapp-instances`);
+        const instance = instanceResponse.data.find(i => i.id === instId);
         
-        if (response.data.success && response.data.is_connected) {
+        console.log("Instance status:", instance?.status);
+        
+        if (instance && instance.status === 'connected') {
+          console.log("✅ Instance connected!");
           setIsConnected(true);
           setIsChecking(false);
-          clearInterval(checkInterval);
+          clearInterval(pollInterval);
           
           setTimeout(() => {
             onSuccess();
           }, 2000);
         }
       } catch (error) {
-        console.error("Erro ao verificar conexão:", error);
+        console.error("Polling error:", error);
       }
-    }, 3000);
+    }, 2000);
 
+    // Stop polling after 5 minutes
     setTimeout(() => {
-      clearInterval(checkInterval);
+      clearInterval(pollInterval);
       if (!isConnected) {
         setIsChecking(false);
+        setError("Tempo limite excedido. Tente novamente.");
       }
     }, 300000);
   };
@@ -97,7 +114,7 @@ export default function CreateInstanceForm({ onSuccess }) {
 
         <div className="bg-white p-4 rounded-lg border-2 border-slate-200 inline-block">
           <img 
-            src={qrCode.startsWith('data:') ? qrCode : `data:image/png;base64,${qrCode}`}
+            src={`https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(qrCode)}`}
             alt="QR Code WhatsApp" 
             className="w-64 h-64"
           />
@@ -132,18 +149,6 @@ export default function CreateInstanceForm({ onSuccess }) {
           disabled={isCreating}
         />
         <p className="text-xs text-slate-500">Use um nome descritivo para identificar a instância</p>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="phone">Telefone (opcional)</Label>
-        <Input
-          id="phone"
-          placeholder="Ex: 5571999999999"
-          value={formData.phone}
-          onChange={(e) => setFormData({...formData, phone: e.target.value})}
-          disabled={isCreating}
-        />
-        <p className="text-xs text-slate-500">Formato: código do país + DDD + número</p>
       </div>
 
       {error && (

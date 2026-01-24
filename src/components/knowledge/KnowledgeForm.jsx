@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { KnowledgeDocument } from "@/entities/KnowledgeDocument";
-import { UploadFile } from "@/integrations/Core";
+import { UploadFile } from "@/api/integrations";
 import { Loader2 } from "lucide-react";
 
 export default function KnowledgeForm({ onSuccess }) {

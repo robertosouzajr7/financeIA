@@ -1,41 +1,49 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Check, Loader2, AlertCircle } from "lucide-react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useAuth } from "@/lib/AuthContext";
+import { api } from "@/api/client";
+
+// ...
 
 export default function Pricing() {
+  const { isAuthenticated, navigateToLogin } = useAuth();
   const [isLoading, setIsLoading] = useState(null);
   const [billingCycle, setBillingCycle] = useState("monthly");
   const [error, setError] = useState(null);
 
-  const handleCheckout = async (plan) => {
-    try {
-      setIsLoading(plan);
-      setError(null);
-      
-      // Verificar se usuário está logado
-      const isAuthenticated = await base44.auth.isAuthenticated();
-      
-      if (!isAuthenticated) {
-        // Redirecionar para login com retorno para esta página
-        await base44.auth.redirectToLogin(window.location.href);
-        return;
-      }
+  const handleCheckout = async (planId) => {
+    setIsLoading(planId);
+    setError(null);
 
-      // Chamar função de checkout
-      const response = await base44.functions.invoke('createCheckout', { plan });
+    if (!isAuthenticated) {
+      navigateToLogin();
+      return;
+    }
+
+    try {
+      // Map planId to Stripe Price ID (Replace with your actual Stripe Price IDs)
+      const priceIds = {
+        basic: billingCycle === 'monthly' ? 'price_basic_monthly_id' : 'price_basic_yearly_id',
+        pro: billingCycle === 'monthly' ? 'price_pro_monthly_id' : 'price_pro_yearly_id',
+      };
+
+      const priceId = priceIds[planId];
+      if (!priceId) throw new Error("Plano inválido ou Price ID não configurado");
+
+      const response = await api.post('/billing/checkout', { priceId });
+      const { url } = response.data;
       
-      if (response.data.success && response.data.checkout_url) {
-        window.location.href = response.data.checkout_url;
+      if (url) {
+        window.location.href = url;
       } else {
-        setError(response.data.error || "Erro ao criar checkout. Tente novamente.");
+        throw new Error('Erro ao criar sessão de checkout');
       }
     } catch (error) {
-      console.error("Erro:", error);
-      setError(error.message || "Erro ao processar pagamento. Tente novamente.");
+      console.error("Checkout error:", error);
+      setError(error.response?.data?.error || error.message || "Erro ao processar pagamento.");
     } finally {
       setIsLoading(null);
     }

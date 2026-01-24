@@ -8,7 +8,7 @@ import { FinancialTransaction } from "@/entities/FinancialTransaction";
 import { AuthenticatedUser } from "@/entities/AuthenticatedUser";
 import { Budget } from "@/entities/Budget";
 import { Alert } from "@/entities/Alert";
-import { base44 } from "@/api/base44Client";
+import { whatsappService } from "@/api/services/whatsappService";
 import { Loader2 } from "lucide-react";
 import { useAlerts } from "../alerts/AlertsContext";
 
@@ -76,10 +76,7 @@ const checkAndCreateBudgetAlert = async (transaction, fetchUnreadCount) => {
     fetchUnreadCount();
 
     try {
-      await base44.functions.invoke('sendWhatsAppMessage', {
-        user_phone: transaction.user_phone,
-        message: whatsappMessage
-      });
+      await whatsappService.sendMessage(transaction.user_phone, whatsappMessage);
       console.log("✅ Alerta enviado pelo WhatsApp");
     } catch (whatsappError) {
       console.error("❌ Erro ao enviar alerta pelo WhatsApp:", whatsappError);

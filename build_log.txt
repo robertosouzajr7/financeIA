@@ -1,0 +1,24 @@
+
+> base44-app@0.0.0 build
+> vite build
+
+vite v6.3.6 building for production...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+transforming...
+✓ 2 modules transformed.
+✗ Build failed in 1.77s
+error during build:
+[vite]: Rollup failed to resolve import "@/App.jsx" from "/Users/macbook_fatima/Documents/financeIA/finance_ia_repo/src/main.jsx".
+This is most likely unintended because it can break your application at runtime.
+If you do want to externalize this module explicitly add it to
+`build.rollupOptions.external`
+    at viteLog (file:///Users/macbook_fatima/Documents/financeIA/finance_ia_repo/node_modules/vite/dist/node/chunks/dep-Bu492Fnd.js:46363:15)
+    at file:///Users/macbook_fatima/Documents/financeIA/finance_ia_repo/node_modules/vite/dist/node/chunks/dep-Bu492Fnd.js:46421:18
+    at onwarn (file:///Users/macbook_fatima/Documents/financeIA/finance_ia_repo/node_modules/@vitejs/plugin-react/dist/index.js:90:7)
+    at file:///Users/macbook_fatima/Documents/financeIA/finance_ia_repo/node_modules/vite/dist/node/chunks/dep-Bu492Fnd.js:46419:7
+    at onRollupLog (file:///Users/macbook_fatima/Documents/financeIA/finance_ia_repo/node_modules/vite/dist/node/chunks/dep-Bu492Fnd.js:46411:5)
+    at onLog (file:///Users/macbook_fatima/Documents/financeIA/finance_ia_repo/node_modules/vite/dist/node/chunks/dep-Bu492Fnd.js:46061:7)
+    at file:///Users/macbook_fatima/Documents/financeIA/finance_ia_repo/node_modules/rollup/dist/es/shared/node-entry.js:20956:32
+    at Object.logger [as onLog] (file:///Users/macbook_fatima/Documents/financeIA/finance_ia_repo/node_modules/rollup/dist/es/shared/node-entry.js:22842:9)
+    at ModuleLoader.handleInvalidResolvedId (file:///Users/macbook_fatima/Documents/financeIA/finance_ia_repo/node_modules/rollup/dist/es/shared/node-entry.js:21586:26)
+    at file:///Users/macbook_fatima/Documents/financeIA/finance_ia_repo/node_modules/rollup/dist/es/shared/node-entry.js:21544:26

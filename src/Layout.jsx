@@ -20,6 +20,8 @@ import { AlertsProvider, useAlerts } from "./components/alerts/AlertsContext";
 import { SystemSettingsProvider, useSystemSettings } from "./components/settings/SystemSettingsContext";
 import { User } from "@/entities/User";
 
+import OrganizationSelector from "@/components/OrganizationSelector";
+
 const navigationItems = [
   {
     title: "Dashboard",
@@ -146,7 +148,7 @@ const InnerLayout = ({ children }) => {
   return (
     <div className="min-h-screen flex w-full bg-gradient-to-br from-slate-50 to-slate-100">
       <Sidebar className="border-r border-slate-200 bg-white">
-        <SidebarHeader className="border-b border-slate-200 p-6">
+        <SidebarHeader className="border-b border-slate-200 p-6 space-y-4">
           <div className="flex items-center gap-3">
             {settings.logo_url ? (
               <img 
@@ -169,6 +171,8 @@ const InnerLayout = ({ children }) => {
               <p className="text-xs text-slate-500">Assistente Financeiro</p>
             </div>
           </div>
+          
+          <OrganizationSelector />
         </SidebarHeader>
         
         <SidebarContent className="p-3">

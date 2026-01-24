@@ -2,7 +2,8 @@
 import { useState } from "react";
 import { WhatsAppInstance } from "@/entities/WhatsAppInstance";
 import { AuthenticatedUser } from "@/entities/AuthenticatedUser";
-import { base44 } from "@/api/base44Client";
+import { whatsappService } from "@/api/services/whatsappService";
+import { adminService } from "@/api/services/adminService";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,7 +67,7 @@ export default function TestWhatsApp() {
       // 3. Verificar configuração do webhook
       if (activeInstances.length > 0) {
         try {
-          const webhookCheck = await base44.functions.invoke('checkWebhookConfig');
+          const webhookCheck = await adminService.checkWebhookConfig();
           results.webhook = {
             status: webhookCheck.data.success ? "ok" : "error",
             data: webhookCheck.data,
@@ -98,7 +99,7 @@ export default function TestWhatsApp() {
 
   const testWebhookConnection = async () => {
     try {
-      const response = await base44.functions.invoke('testWebhookConnection');
+      const response = await adminService.testWebhookConnection();
       console.log("Teste de webhook:", response.data);
       setWebhookTest(response.data);
     } catch (error) {
@@ -112,7 +113,7 @@ export default function TestWhatsApp() {
     setWebhookError(null);
     
     try {
-      const response = await base44.functions.invoke('setupWebhook');
+      const response = await adminService.setupWebhook();
       
       console.log("Resposta do webhook:", response.data);
       
@@ -148,7 +149,7 @@ export default function TestWhatsApp() {
     setWebhookError(null);
     
     try {
-      const response = await base44.functions.invoke('resetWebhook');
+      const response = await adminService.resetWebhook();
       
       console.log("Resposta do reset:", response.data);
       
@@ -187,10 +188,7 @@ export default function TestWhatsApp() {
     setTestResult(null);
 
     try {
-      const response = await base44.functions.invoke('testWhatsAppMessage', {
-        user_phone: testPhone,
-        message: testMessage
-      });
+      const response = await whatsappService.sendMessage(testPhone, testMessage);
 
       setTestResult({
         success: response.data.success,
