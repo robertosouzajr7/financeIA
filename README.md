@@ -6,7 +6,7 @@ FinanceIA é uma plataforma completa de gestão financeira pessoal com inteligê
 
 - 📊 **Gestão Financeira Completa**: Transações, orçamentos, metas e despesas recorrentes
 - 🤖 **IA Integrada**: Detecção automática de intenções e processamento de linguagem natural
-- 📱 **WhatsApp Integration**: Gerenciamento financeiro via WhatsApp com Baileys
+- 📱 **WhatsApp 100% Nativo**: Gerenciamento via WhatsApp com Baileys (SEM APIs externas!)
 - 💳 **Pagamentos Stripe**: Sistema completo de assinaturas e cobrança
 - 📸 **OCR de Comprovantes**: Extração automática de dados com Claude AI (Premium)
 - 🏢 **Multitenancy**: Suporte a múltiplas organizações
@@ -74,8 +74,10 @@ node index.js
 DATABASE_URL="postgresql://user:pass@localhost:5432/financeia"
 JWT_SECRET="seu-secret-aqui"
 STRIPE_SECRET_KEY="sk_test_xxxxx"
-EVOLUTION_API_TOKEN="token-evolution-api"
 GOOGLE_API_KEY="sua-api-key-google"
+
+# WhatsApp não precisa de configuração! É 100% nativo via Baileys
+# Apenas crie uma instância e escaneie o QR code
 ```
 
 Veja `.env.example` para lista completa.
