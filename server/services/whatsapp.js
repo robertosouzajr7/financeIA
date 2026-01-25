@@ -17,6 +17,12 @@ const prisma = new PrismaClient();
 // Store active connections
 const activeConnections = new Map();
 
+// Store reconnection attempts and timeouts
+const reconnectionAttempts = new Map();
+const reconnectionTimeouts = new Map();
+const MAX_RECONNECTION_ATTEMPTS = 5;
+const BASE_RECONNECTION_DELAY = 5000; // 5 seconds
+
 // Logger configuration
 const logger = pino({ level: 'info' }); // Set to 'debug' for verbose logging
 
@@ -95,25 +101,74 @@ async function startWhatsAppConnection(instanceId, onMessage) {
         console.log('Connection closed. Reconnect:', shouldReconnect);
 
         if (shouldReconnect) {
-          // Reconnect after 5 seconds
-          setTimeout(() => startWhatsAppConnection(instanceId, onMessage), 5000);
+          // Clear any existing reconnection timeout
+          const existingTimeout = reconnectionTimeouts.get(instanceId);
+          if (existingTimeout) {
+            clearTimeout(existingTimeout);
+          }
+
+          // Get current attempt number
+          const attempts = reconnectionAttempts.get(instanceId) || 0;
+
+          if (attempts < MAX_RECONNECTION_ATTEMPTS) {
+            // Calculate delay with exponential backoff
+            const delay = BASE_RECONNECTION_DELAY * Math.pow(2, attempts);
+
+            console.log(`⏳ Reconnecting in ${delay/1000}s (attempt ${attempts + 1}/${MAX_RECONNECTION_ATTEMPTS})...`);
+
+            // Increment attempts
+            reconnectionAttempts.set(instanceId, attempts + 1);
+
+            // Schedule reconnection
+            const timeout = setTimeout(() => {
+              console.log(`🔄 Attempting reconnection for ${instance.instance_name}...`);
+              startWhatsAppConnection(instanceId, onMessage).catch(err => {
+                console.error(`Failed to reconnect ${instance.instance_name}:`, err.message);
+              });
+            }, delay);
+
+            reconnectionTimeouts.set(instanceId, timeout);
+          } else {
+            console.log(`❌ Max reconnection attempts reached for ${instance.instance_name}. Giving up.`);
+            reconnectionAttempts.delete(instanceId);
+            reconnectionTimeouts.delete(instanceId);
+
+            await prisma.whatsAppInstance.update({
+              where: { id: instanceId },
+              data: {
+                status: 'disconnected',
+                qr_code: null,
+                phone_number: null
+              }
+            });
+            activeConnections.delete(instanceId);
+          }
         } else {
-          // Logged out - clear auth
+          // Logged out - clear credentials
+          console.log(`🚪 Logged out from ${instance.instance_name}`);
+          reconnectionAttempts.delete(instanceId);
+          reconnectionTimeouts.delete(instanceId);
+
           await prisma.whatsAppInstance.update({
             where: { id: instanceId },
-            data: { 
+            data: {
               status: 'disconnected',
               qr_code: null,
               phone_number: null
             }
           });
           activeConnections.delete(instanceId);
-          
-          // Cleanup session files to prevent corruption loops
+
+          // Cleanup session files
           await deleteSession(instance.instance_name);
         }
       } else if (connection === 'open') {
         console.log(`✅ WhatsApp connected for instance: ${instance.instance_name}`);
+
+        // Reset reconnection attempts on successful connection
+        reconnectionAttempts.delete(instanceId);
+        reconnectionTimeouts.delete(instanceId);
+
         const phoneNumber = sock.user?.id?.split(':')[0] || null;
         
         await prisma.whatsAppInstance.update({
@@ -250,20 +305,39 @@ async function sendWhatsAppMessage(instanceId, to, message) {
  * Stop a WhatsApp connection
  */
 async function stopWhatsAppConnection(instanceId) {
+  console.log(`🛑 Stopping connection for instance ${instanceId}...`);
+
+  // Clear any pending reconnection timeouts
+  const existingTimeout = reconnectionTimeouts.get(instanceId);
+  if (existingTimeout) {
+    clearTimeout(existingTimeout);
+    reconnectionTimeouts.delete(instanceId);
+  }
+
+  // Reset reconnection attempts
+  reconnectionAttempts.delete(instanceId);
+
   const sock = activeConnections.get(instanceId);
-  
+
   if (sock) {
-    await sock.logout();
+    try {
+      await sock.logout();
+    } catch (error) {
+      console.log('Logout error (connection may already be closed):', error.message);
+    }
+
     activeConnections.delete(instanceId);
-    
+
     await prisma.whatsAppInstance.update({
       where: { id: instanceId },
-      data: { 
+      data: {
         status: 'disconnected',
         qr_code: null
       }
     });
   }
+
+  console.log(`✅ Connection stopped for instance ${instanceId}`);
 }
 
 /**

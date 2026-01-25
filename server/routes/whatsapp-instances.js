@@ -131,6 +131,33 @@ router.post('/:id/stop', async (req, res) => {
   }
 });
 
+// Reconnect instance (without requiring new QR code)
+router.post('/:id/reconnect', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    console.log(`🔄 Reconnecting instance ${id}...`);
+
+    // Stop existing connection if any
+    await stopWhatsAppConnection(id).catch(() => {});
+
+    // Wait a bit before reconnecting
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Start new connection - will use saved credentials
+    await startWhatsAppConnection(id, handleIncomingMessage);
+
+    res.json({
+      message: 'Reconnection initiated',
+      instanceId: id,
+      note: 'Connection will be established using saved credentials. Check status after a few seconds.'
+    });
+  } catch (error) {
+    console.error('Reconnect error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get QR code for instance
 router.get('/:id/qrcode', async (req, res) => {
   try {
