@@ -1,7 +1,8 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { LayoutDashboard, Users, MessageSquare, Bell, Settings, Smartphone, TrendingUp, DollarSign, PiggyBank, Shield, BookOpen, Crown, Ticket, Layout as LayoutIcon, Repeat, Mail } from "lucide-react";
+import { useAuth } from "@/lib/AuthContext";
+import { LayoutDashboard, Users, MessageSquare, Bell, Settings, Smartphone, TrendingUp, DollarSign, PiggyBank, Shield, BookOpen, Crown, Ticket, Layout as LayoutIcon, Repeat, Mail, LogOut } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -127,6 +128,7 @@ const InnerLayout = ({ children }) => {
   const location = useLocation();
   const { unreadCount } = useAlerts();
   const { settings } = useSystemSettings();
+  const { logout } = useAuth();
   const [user, setUser] = React.useState(null);
 
   React.useEffect(() => {
@@ -244,7 +246,7 @@ const InnerLayout = ({ children }) => {
         </SidebarContent>
 
         <SidebarFooter className="border-t border-slate-200 p-4">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 w-full">
             <div 
               className="w-10 h-10 rounded-full flex items-center justify-center"
               style={{ backgroundColor: `${primaryColor}20` }}
@@ -259,6 +261,13 @@ const InnerLayout = ({ children }) => {
               </p>
               <p className="text-xs text-slate-500 truncate">{user?.email}</p>
             </div>
+            <button 
+                onClick={() => logout(true)}
+                className="p-2 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-red-500 transition-colors"
+                title="Sair"
+            >
+                <LogOut className="w-5 h-5" />
+            </button>
           </div>
         </SidebarFooter>
       </Sidebar>
@@ -284,11 +293,13 @@ export default function Layout({ children }) {
   
   // Verificar se é landing page ou pricing
   const isPublicPage = location.pathname === createPageUrl("Landing") || 
-                       location.pathname === "/Landing" ||
-                       location.pathname.includes("Landing") ||
-                       location.pathname === createPageUrl("Pricing") ||
-                       location.pathname === "/Pricing" ||
-                       location.pathname.includes("Pricing");
+                       location.pathname.toLowerCase().includes("landing") ||
+                       location.pathname.toLowerCase().includes("pricing") ||
+                       location.pathname.toLowerCase().includes("login") ||
+                       location.pathname.toLowerCase().includes("register") ||
+                       location.pathname.toLowerCase().includes("onboarding") ||
+                       location.pathname.toLowerCase().includes("paymentsuccess") ||
+                       location.pathname === "/";
 
   // Páginas públicas sem sidebar - apenas o conteúdo puro
   if (isPublicPage) {

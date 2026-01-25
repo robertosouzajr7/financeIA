@@ -4,6 +4,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Loader2, CheckCircle, Smartphone, QrCode } from "lucide-react";
 import { api } from "@/api/client";
+import { QRCodeCanvas } from "qrcode.react";
 
 export default function CreateInstanceForm({ onSuccess }) {
   const [formData, setFormData] = useState({
@@ -113,10 +114,10 @@ export default function CreateInstanceForm({ onSuccess }) {
         </div>
 
         <div className="bg-white p-4 rounded-lg border-2 border-slate-200 inline-block">
-          <img 
-            src={`https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(qrCode)}`}
-            alt="QR Code WhatsApp" 
-            className="w-64 h-64"
+          <QRCodeCanvas 
+            value={qrCode} 
+            size={256}
+            level={"H"}
           />
         </div>
 

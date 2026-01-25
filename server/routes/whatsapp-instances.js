@@ -5,137 +5,31 @@ const {
   stopWhatsAppConnection, 
   getQRCode,
   isConnected,
-  sendWhatsAppMessage
+  sendWhatsAppMessage,
+  deleteSession
 } = require('../services/whatsapp');
 const { generateResponse } = require('../utils/llm');
 
 const router = express.Router();
 const prisma = new PrismaClient();
+const authMiddleware = require('../middleware/authMiddleware');
+const checkLimit = require('../middleware/checkLimit');
 
-// Message handler for incoming WhatsApp messages
-async function handleIncomingMessage({ from, message, instanceName, sock }) {
-  try {
-    const userPhone = from.split('@')[0]; // Extract phone number
-    
-    console.log('🔍 Debug - Full message object:', { from, message, userPhone });
-    
-    // Find user with organization context
-    let user = await prisma.user.findUnique({
-      where: { user_phone: userPhone },
-      include: {
-        organizations: {
-          include: {
-            organization: true
-          }
-        }
-      }
-    });
+const { handleIncomingMessage } = require('../services/messageHandler');
 
-    console.log('🔍 Debug - User found:', user ? `Yes (${user.user_phone})` : 'No');
-
-    if (!user) {
-      console.log(`❌ User not registered: ${userPhone}`);
-      return;
-    }
-
-    // Determine active organization (default to first one for now)
-    const activeOrg = user.organizations[0]?.organization;
-    const orgContext = activeOrg ? `Você está assistindo a organização: ${activeOrg.name}.` : '';
-
-    const now = new Date();
-    const isAuthenticated = user.is_authenticated && 
-                           user.authentication_expires && 
-                           new Date(user.authentication_expires) > now;
-
-    const conversationStarted = user.conversation_started;
-    const hasKeyword = message && message.toLowerCase().includes('financeia');
-
-    // Conversation Start Logic
-    if (!conversationStarted && !hasKeyword && !isAuthenticated) {
-      return;
-    }
-
-    if (hasKeyword && !conversationStarted) {
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { conversation_started: true }
-      });
-
-      if (isAuthenticated) {
-        const welcomeMessage = `👋 Olá! Bem-vindo de volta ao FinanceIA${activeOrg ? ` (${activeOrg.name})` : ''}!\\n\\nVocê já está autenticado. Como posso ajudar?`;
-        await sock.sendMessage(from, { text: welcomeMessage });
-        return;
-      } else {
-        const loginPrompt = "👋 Olá! Bem-vindo ao FinanceIA!\\n\\n🔐 Para acessar seus dados financeiros, por favor envie sua senha de acesso.";
-        await sock.sendMessage(from, { text: loginPrompt });
-        return;
-      }
-    }
-
-    // Logout Logic
-    if (message && ['sair', 'logout', 'deslogar'].includes(message.toLowerCase())) {
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { 
-          is_authenticated: false,
-          authentication_expires: null,
-          conversation_started: false
-        }
-      });
-      const logoutMessage = "👋 Você foi deslogado com sucesso!\\n\\nPara acessar novamente, envie: financeIA";
-      await sock.sendMessage(from, { text: logoutMessage });
-      return;
-    }
-
-    // Authentication Logic
-    if (!isAuthenticated) {
-      if (!message) {
-        const loginPrompt = "🔐 Autenticação Necessária\\n\\nPara acessar seus dados financeiros, envie sua senha de acesso.";
-        await sock.sendMessage(from, { text: loginPrompt });
-        return;
-      }
-
-      const providedHash = Buffer.from(message).toString('base64');
-      
-      if (providedHash === user.password_hash) {
-        const expiresAt = new Date();
-        expiresAt.setHours(expiresAt.getHours() + 24);
-
-        await prisma.user.update({
-          where: { id: user.id },
-          data: {
-            is_authenticated: true,
-            last_authenticated: now,
-            authentication_expires: expiresAt
-          }
-        });
-
-        const welcomeMessage = `✅ Autenticação bem-sucedida!\\n\\n🎉 Bem-vindo ao FinanceIA${activeOrg ? ` (${activeOrg.name})` : ''}!`;
-        await sock.sendMessage(from, { text: welcomeMessage });
-        return;
-      } else {
-        const errorMessage = "❌ Senha incorreta\\n\\nTente novamente.";
-        await sock.sendMessage(from, { text: errorMessage });
-        return;
-      }
-    }
-
-    // Authenticated - Process Message with LLM
-    // Inject organization context into the message or system prompt
-    // For now, we prepend it to the message for the LLM to see
-    const messageWithContext = `${orgContext}\n\nUsuário diz: ${message}`;
-    const llmResponse = await generateResponse(messageWithContext);
-    await sock.sendMessage(from, { text: llmResponse });
-
-  } catch (error) {
-    console.error('Error handling message:', error);
-  }
-}
+// Message handler moved to services/messageHandler.js
 
 // List all instances
-router.get('/', async (req, res) => {
+router.get('/', authMiddleware, async (req, res) => {
   try {
+    const organization_id = req.organization?.id;
+    
+    if (!organization_id) {
+       return res.status(400).json({ error: 'Organization context required' });
+    }
+
     const instances = await prisma.whatsAppInstance.findMany({
+      where: { organization_id },
       orderBy: { created_at: 'desc' }
     });
 
@@ -153,10 +47,44 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Get instance by name (for onboarding polling)
+router.get('/name/:name', authMiddleware, async (req, res) => {
+  try {
+    const { name } = req.params;
+    const organization_id = req.organization?.id;
+
+    const instance = await prisma.whatsAppInstance.findFirst({
+      where: { 
+        instance_name: name,
+        organization_id 
+      }
+    });
+
+    if (!instance) {
+      return res.status(404).json({ error: 'Instance not found' });
+    }
+
+    const qr = await getQRCode(instance.id);
+    const connected = isConnected(instance.id);
+
+    res.json({
+      ...instance,
+      qr,
+      status: connected ? 'connected' : (instance.status || 'disconnected')
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ...
+
 // Create new instance
-router.post('/', async (req, res) => {
+router.post('/', authMiddleware, checkLimit('chatbots'), async (req, res) => {
   try {
     const { instance_name } = req.body;
+    const organization_id = req.organization?.id;
+    const user_email = req.user?.user_phone; // Linking by phone as per schema relation
 
     if (!instance_name) {
       return res.status(400).json({ error: 'instance_name is required' });
@@ -165,7 +93,9 @@ router.post('/', async (req, res) => {
     const instance = await prisma.whatsAppInstance.create({
       data: {
         instance_name,
-        status: 'disconnected'
+        status: 'disconnected',
+        organization_id, // Link to org
+        user_email // Link to user
       }
     });
 
@@ -227,9 +157,14 @@ router.delete('/:id', async (req, res) => {
     await stopWhatsAppConnection(id);
 
     // Delete from database
-    await prisma.whatsAppInstance.delete({
+    const instance = await prisma.whatsAppInstance.delete({
       where: { id }
     });
+    
+    // Clean up session files
+    if (instance) {
+       await deleteSession(instance.instance_name);
+    }
 
     res.json({ message: 'Instance deleted' });
   } catch (error) {

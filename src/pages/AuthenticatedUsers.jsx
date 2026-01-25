@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, CheckCircle, XCircle, Key, Trash2, RefreshCw } from "lucide-react";
+import { Plus, CheckCircle, XCircle, Key, Trash2, RefreshCw, Edit } from "lucide-react";
 import { format } from "date-fns";
 
 // Função para formatar e validar telefone (sem o 9 extra)
@@ -53,7 +53,19 @@ export default function AuthenticatedUsers() {
     setFormData({...formData, user_phone: formatted});
   };
 
-  const handleCreate = async (e) => {
+  const [editingUser, setEditingUser] = useState(null);
+
+  const handleEdit = (user) => {
+    setEditingUser(user);
+    setFormData({
+      user_name: user.user_name,
+      user_phone: user.user_phone,
+      password: "" // Keep empty to not change
+    });
+    setShowCreateDialog(true);
+  };
+
+  const handleSave = async (e) => {
     e.preventDefault();
     
     // Validar formato do telefone
@@ -61,21 +73,40 @@ export default function AuthenticatedUsers() {
       alert("Formato de telefone inválido. Use: 55 + DDD + número (ex: 557199999999)");
       return;
     }
-    
-    // Criar hash da senha (Base64 - em produção use bcrypt)
-    const passwordHash = btoa(formData.password);
-    
-    await AuthenticatedUser.create({
-      user_name: formData.user_name,
-      user_phone: formData.user_phone,
-      password_hash: passwordHash,
-      is_authenticated: false,
-      conversation_started: false
-    });
 
-    setFormData({ user_name: "", user_phone: "", password: "" });
-    setShowCreateDialog(false);
-    loadUsers();
+    const payload = {
+        user_name: formData.user_name,
+        user_phone: formData.user_phone,
+    };
+    
+    // Only update password if provided
+    if (formData.password) {
+        payload.password_hash = btoa(formData.password);
+    }
+    
+    try {
+        if (editingUser) {
+            await AuthenticatedUser.update(editingUser.id, payload);
+        } else {
+            // Create
+            if (!formData.password) {
+                alert("Senha é obrigatória para novos usuários");
+                return;
+            }
+            payload.password_hash = btoa(formData.password);
+            payload.is_authenticated = false;
+            payload.conversation_started = false;
+            await AuthenticatedUser.create(payload);
+        }
+
+        setFormData({ user_name: "", user_phone: "", password: "" });
+        setEditingUser(null);
+        setShowCreateDialog(false);
+        loadUsers();
+    } catch (error) {
+        console.error("Erro ao salvar:", error);
+        alert("Erro ao salvar usuário");
+    }
   };
 
   const handleResetAuth = async (user) => {
@@ -89,8 +120,15 @@ export default function AuthenticatedUsers() {
 
   const handleDelete = async (id) => {
     if (confirm("Tem certeza que deseja remover este usuário?")) {
-      await AuthenticatedUser.delete(id);
-      loadUsers();
+      try {
+        setIsLoading(true); // Show loading during delete
+        await AuthenticatedUser.delete(id);
+        await loadUsers(); // Reload list
+      } catch (error) {
+        console.error("Erro ao deletar usuário:", error);
+        alert("Erro ao remover usuário. Verifique se você tem permissão ou se sua sessão expirou.");
+        setIsLoading(false); // Ensure loading stops
+      }
     }
   };
 
@@ -102,63 +140,69 @@ export default function AuthenticatedUsers() {
             <h1 className="text-3xl font-bold text-slate-900 mb-2">Usuários WhatsApp Autenticados</h1>
             <p className="text-slate-600">Gerencie os usuários que podem acessar o bot via WhatsApp</p>
           </div>
-          <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+          <Dialog open={showCreateDialog} onOpenChange={(isOpen) => {
+            setShowCreateDialog(isOpen);
+            if (!isOpen) {
+                setEditingUser(null);
+                setFormData({ user_name: "", user_phone: "", password: "" });
+            }
+          }}>
             <DialogTrigger asChild>
               <Button className="bg-emerald-600 hover:bg-emerald-700">
                 <Plus className="w-4 h-4 mr-2" />
                 Novo Usuário
               </Button>
             </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Cadastrar Novo Usuário</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleCreate} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="user_name">Nome do Usuário</Label>
-                  <Input
-                    id="user_name"
-                    placeholder="Ex: João Silva"
-                    value={formData.user_name}
-                    onChange={(e) => setFormData({...formData, user_name: e.target.value})}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="user_phone">Telefone</Label>
-                  <Input
-                    id="user_phone"
-                    placeholder="557199999999"
-                    value={formData.user_phone}
-                    onChange={handlePhoneChange}
-                    required
-                    maxLength={12}
-                  />
-                  <p className="text-xs text-slate-500">
-                    Formato: 55 + DDD + número (12 dígitos)<br/>
-                    Exemplo: 557199999999 (Salvador)<br/>
-                    <strong>NÃO</strong> adicione o 9 extra antes do número
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="password">Senha de Acesso</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    placeholder="Senha segura"
-                    value={formData.password}
-                    onChange={(e) => setFormData({...formData, password: e.target.value})}
-                    required
-                  />
-                  <p className="text-xs text-slate-500">O usuário usará esta senha para se autenticar no WhatsApp</p>
-                </div>
-
-                <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700">
-                  Cadastrar Usuário
-                </Button>
-              </form>
+              <DialogContent>
+               <DialogHeader>
+                 <DialogTitle>{editingUser ? 'Editar Usuário' : 'Cadastrar Novo Usuário'}</DialogTitle>
+               </DialogHeader>
+               <form onSubmit={handleSave} className="space-y-4">
+                 <div className="space-y-2">
+                   <Label htmlFor="user_name">Nome do Usuário</Label>
+                   <Input
+                     id="user_name"
+                     placeholder="Ex: João Silva"
+                     value={formData.user_name}
+                     onChange={(e) => setFormData({...formData, user_name: e.target.value})}
+                     required
+                   />
+                 </div>
+ 
+                 <div className="space-y-2">
+                   <Label htmlFor="user_phone">Telefone</Label>
+                   <Input
+                     id="user_phone"
+                     placeholder="557199999999"
+                     value={formData.user_phone}
+                     onChange={handlePhoneChange}
+                     required
+                     maxLength={12}
+                   />
+                   <p className="text-xs text-slate-500">
+                     Formato: 55 + DDD + número (12 dígitos)<br/>
+                     Exemplo: 557199999999 (Salvador)<br/>
+                     <strong>NÃO</strong> adicione o 9 extra antes do número
+                   </p>
+                 </div>
+ 
+                 <div className="space-y-2">
+                   <Label htmlFor="password">Senha de Acesso {editingUser && '(Deixe em branco para manter)'}</Label>
+                   <Input
+                     id="password"
+                     type="password"
+                     placeholder="Senha segura"
+                     value={formData.password}
+                     onChange={(e) => setFormData({...formData, password: e.target.value})}
+                     required={!editingUser}
+                   />
+                   <p className="text-xs text-slate-500">O usuário usará esta senha para se autenticar no WhatsApp</p>
+                 </div>
+ 
+                 <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700">
+                   {editingUser ? 'Salvar Alterações' : 'Cadastrar Usuário'}
+                 </Button>
+               </form>
             </DialogContent>
           </Dialog>
         </div>
@@ -247,7 +291,15 @@ export default function AuthenticatedUsers() {
                             }
                           </TableCell>
                           <TableCell>
-                            <div className="flex gap-2">
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleEdit(user)}
+                              >
+                                <Edit className="w-3 h-3 mr-1" />
+                                Editar
+                              </Button>
                               <Button
                                 variant="outline"
                                 size="sm"

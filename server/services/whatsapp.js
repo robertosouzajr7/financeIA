@@ -3,7 +3,8 @@ const {
   DisconnectReason, 
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
-  makeCacheableSignalKeyStore
+  makeCacheableSignalKeyStore,
+  downloadMediaMessage
 } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 const pino = require('pino');
@@ -17,7 +18,7 @@ const prisma = new PrismaClient();
 const activeConnections = new Map();
 
 // Logger configuration
-const logger = pino({ level: 'silent' }); // Set to 'debug' for verbose logging
+const logger = pino({ level: 'info' }); // Set to 'debug' for verbose logging
 
 /**
  * Start a WhatsApp connection for a given instance
@@ -69,14 +70,21 @@ async function startWhatsAppConnection(instanceId, onMessage) {
 
       if (qr) {
         console.log(`📱 QR Code generated for instance: ${instance.instance_name}`);
-        // Store QR code in database
-        await prisma.whatsAppInstance.update({
-          where: { id: instanceId },
-          data: { 
-            qr_code: qr,
-            status: 'connecting'
-          }
-        });
+        console.log('QR Length:', qr.length);
+        
+        try {
+          // Store QR code in database
+          await prisma.whatsAppInstance.update({
+            where: { id: instanceId },
+            data: { 
+              qr_code: qr,
+              status: 'connecting'
+            }
+          });
+          console.log('✅ QR Code saved to DB');
+        } catch (error) {
+          console.error('❌ Error saving QR code to DB:', error);
+        }
       }
 
       if (connection === 'close') {
@@ -100,6 +108,9 @@ async function startWhatsAppConnection(instanceId, onMessage) {
             }
           });
           activeConnections.delete(instanceId);
+          
+          // Cleanup session files to prevent corruption loops
+          await deleteSession(instance.instance_name);
         }
       } else if (connection === 'open') {
         console.log(`✅ WhatsApp connected for instance: ${instance.instance_name}`);
@@ -143,18 +154,44 @@ async function startWhatsAppConnection(instanceId, onMessage) {
         }
 
         const from = msg.key.remoteJid;
+
+        // Ignore groups and broadcasts
+        if (from.endsWith('@g.us') || from.endsWith('@broadcast')) {
+           // console.log(`⏭️  Skipping - group/broadcast message from ${from}`);
+           continue;
+        }
         
-        // Extract message text from various message types
+        // Extract message text and media
         let messageText = '';
+        let mediaBuffer = null;
+        let mediaType = null;
+
         if (msg.message.conversation) {
           messageText = msg.message.conversation;
           console.log('✅ Extracted from conversation');
         } else if (msg.message.extendedTextMessage?.text) {
           messageText = msg.message.extendedTextMessage.text;
           console.log('✅ Extracted from extendedTextMessage');
-        } else if (msg.message.imageMessage?.caption) {
-          messageText = msg.message.imageMessage.caption;
-          console.log('✅ Extracted from imageMessage caption');
+        } else if (msg.message.imageMessage) {
+          messageText = msg.message.imageMessage.caption || ''; // Caption is optional
+          console.log('✅ Extracted from imageMessage (caption: ' + messageText + ')');
+          
+          try {
+             // Download the image
+             mediaBuffer = await downloadMediaMessage(
+                msg,
+                'buffer',
+                { },
+                { 
+                  logger,
+                  reuploadRequest: sock.updateMediaMessage
+                }
+             );
+             mediaType = 'image/jpeg'; // Assuming JPEG for WhatsApp images usually
+             console.log('📸 Image downloaded successfully, size:', mediaBuffer.length);
+          } catch (err) {
+             console.error('❌ Failed to download image:', err);
+          }
         } else if (msg.message.videoMessage?.caption) {
           messageText = msg.message.videoMessage.caption;
           console.log('✅ Extracted from videoMessage caption');
@@ -163,18 +200,21 @@ async function startWhatsAppConnection(instanceId, onMessage) {
           console.log('🔍 Full msg.message:', JSON.stringify(msg.message, null, 2));
         }
 
-        if (!messageText) {
-          console.log('⏭️  Skipping - no text extracted');
+        // Allow processing if there is text OR media
+        if (!messageText && !mediaBuffer) {
+          console.log('⏭️  Skipping - no text or media extracted');
           continue;
         }
 
-        console.log(`📩 Message from ${from}: ${messageText}`);
+        console.log(`📩 Message from ${from}: ${messageText} ${mediaBuffer ? '[+Image]' : ''}`);
 
         // Call the message handler
         if (onMessage) {
           await onMessage({
             from,
-            message: messageText,
+            message: messageText || '', // Ensure string if empty
+            media: mediaBuffer,
+            mediaType,
             instanceName: instance.instance_name,
             sock
           });
@@ -245,11 +285,27 @@ function isConnected(instanceId) {
   return sock && sock.user ? true : false;
 }
 
+/**
+ * Delete session data
+ */
+async function deleteSession(instanceName) {
+  const authDir = path.join(__dirname, '../.auth', instanceName);
+  if (fs.existsSync(authDir)) {
+    try {
+      fs.rmSync(authDir, { recursive: true, force: true });
+      console.log(`🗑️ Auth directory deleted for: ${instanceName}`);
+    } catch (error) {
+      console.error(`❌ Error deleting auth directory: ${error.message}`);
+    }
+  }
+}
+
 module.exports = {
   startWhatsAppConnection,
   sendWhatsAppMessage,
   stopWhatsAppConnection,
   getQRCode,
   isConnected,
-  activeConnections
+  activeConnections,
+  deleteSession
 };

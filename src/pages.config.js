@@ -21,7 +21,9 @@ import AuthenticatedUsers from './pages/AuthenticatedUsers';
 import RecurringExpenses from './pages/RecurringExpenses';
 import AdminEmails from './pages/AdminEmails';
 import Login from './pages/Login';
+import Register from './pages/Register';
 import OrganizationSettings from './pages/OrganizationSettings';
+import AdminPlans from './pages/AdminPlans';
 import Layout from './Layout.jsx';
 
 
@@ -49,7 +51,9 @@ export const PAGES = {
     "RecurringExpenses": RecurringExpenses,
     "AdminEmails": AdminEmails,
     "Login": Login,
+    "Register": Register,
     "OrganizationSettings": OrganizationSettings,
+    "AdminPlans": AdminPlans,
 }
 
 export const pagesConfig = {

@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Check, Loader2, AlertCircle } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useAuth } from "@/lib/AuthContext";
 import { api } from "@/api/client";
 
@@ -14,20 +15,44 @@ export default function Pricing() {
   const [billingCycle, setBillingCycle] = useState("monthly");
   const [error, setError] = useState(null);
 
-  const handleCheckout = async (planId) => {
+  // Auto-resume checkout if pending
+  useEffect(() => {
+     if (isAuthenticated) {
+         const pending = localStorage.getItem('pending_checkout');
+         if (pending) {
+             try {
+                 const { planId, billingCycle: savedCycle } = JSON.parse(pending);
+                 setBillingCycle(savedCycle);
+                 localStorage.removeItem('pending_checkout');
+                 handleCheckout(planId, savedCycle); // Pass cycle explicitly to be safe
+             } catch (e) {
+                 console.error("Error parsing pending checkout", e);
+                 localStorage.removeItem('pending_checkout');
+             }
+         }
+     }
+  }, [isAuthenticated]);
+
+  const handleCheckout = async (planId, cycleOverride = null) => {
+    const currentCycle = cycleOverride || billingCycle;
     setIsLoading(planId);
     setError(null);
 
     if (!isAuthenticated) {
+      localStorage.setItem('pending_checkout', JSON.stringify({ planId, billingCycle: currentCycle }));
       navigateToLogin();
       return;
     }
 
     try {
-      // Map planId to Stripe Price ID (Replace with your actual Stripe Price IDs)
+      // Map planId to Stripe Price ID from environment variables
       const priceIds = {
-        basic: billingCycle === 'monthly' ? 'price_basic_monthly_id' : 'price_basic_yearly_id',
-        pro: billingCycle === 'monthly' ? 'price_pro_monthly_id' : 'price_pro_yearly_id',
+        basic: currentCycle === 'monthly' 
+          ? import.meta.env.VITE_STRIPE_PRICE_BASIC_MONTHLY 
+          : import.meta.env.VITE_STRIPE_PRICE_BASIC_YEARLY,
+        pro: currentCycle === 'monthly' 
+          ? import.meta.env.VITE_STRIPE_PRICE_PRO_MONTHLY 
+          : import.meta.env.VITE_STRIPE_PRICE_PRO_YEARLY,
       };
 
       const priceId = priceIds[planId];

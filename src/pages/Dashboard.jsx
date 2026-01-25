@@ -3,11 +3,13 @@ import { useAuth } from "@/lib/AuthContext";
 import { api } from "@/api/client";
 import { WhatsAppInstance } from "@/entities/WhatsAppInstance";
 import { Alert } from "@/entities/Alert";
+import { FinancialTransaction } from "@/entities/FinancialTransaction"; // Import here
 import { Smartphone, Users, DollarSign, AlertCircle, TrendingUp, TrendingDown } from "lucide-react";
 
 import MetricCard from "../components/dashboard/MetricCard";
 import InstancesOverview from "../components/dashboard/InstancesOverview";
 import RecentActivity from "../components/dashboard/RecentActivity";
+import RecentTransactions from "../components/dashboard/RecentTransactions"; // Import here
 import AlertsWidget from "../components/dashboard/AlertsWidget";
 import AccountBalance from "../components/dashboard/AccountBalance";
 
@@ -26,6 +28,7 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [instances, setInstances] = useState([]);
   const [recentAlerts, setRecentAlerts] = useState([]);
+  const [recentTransactions, setRecentTransactions] = useState([]); // State for transactions
 
   useEffect(() => {
     if (currentOrganization) {
@@ -42,21 +45,27 @@ export default function Dashboard() {
       const analytics = analyticsRes.data;
 
       // Fetch other entities (Interceptor handles x-org-id)
-      // Fetch other entities (Interceptor handles x-org-id)
-      const [instancesData, allAlerts] = await Promise.all([
+      const [instancesData, allAlerts, transactionsList] = await Promise.all([
         WhatsAppInstance.list(),
-        Alert.filter({ is_read: false })
+        Alert.filter({ is_read: false }),
+        FinancialTransaction.filter({ _sort: 'date', _order: 'desc', _limit: 10 }) // Fetch top 10 recent
       ]);
 
       const activeInstances = instancesData.filter(i => i.is_connected);
       
-      // Sort and slice alerts in frontend since backend crud doesn't support it yet
+      // Sort and slice alerts
       const alertsData = allAlerts
         .sort((a, b) => new Date(b.created_date) - new Date(a.created_date))
         .slice(0, 5);
+        
+      // Sort and slice transactions
+      const txData = (Array.isArray(transactionsList) ? transactionsList : [])
+          .sort((a, b) => new Date(b.date) - new Date(a.date))
+          .slice(0, 5);
 
       setInstances(instancesData);
       setRecentAlerts(alertsData);
+      setRecentTransactions(txData);
       
       setStats({
         instances: instancesData.length,
@@ -95,7 +104,7 @@ export default function Dashboard() {
           totalExpenses={stats.totalExpenses}
           balance={stats.balance}
           isLoading={isLoading}
-          users={[]} // Removed user filter for now as analytics is aggregated
+          users={[]} 
           selectedUser="all"
           onUserChange={() => {}}
         />
@@ -140,8 +149,9 @@ export default function Dashboard() {
         </div>
 
         <div className="grid lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-2 space-y-6">
             <InstancesOverview instances={instances} isLoading={isLoading} onRefresh={loadDashboardData} />
+            <RecentTransactions transactions={recentTransactions} isLoading={isLoading} />
           </div>
 
           <div className="space-y-6">

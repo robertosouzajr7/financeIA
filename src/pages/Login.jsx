@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Loader2, Lock, Phone } from "lucide-react";
 
 export default function Login() {
@@ -21,7 +21,11 @@ export default function Login() {
     const success = await login(phone, password);
     
     if (success) {
-      navigate("/Dashboard");
+      if (localStorage.getItem('pending_checkout')) {
+        navigate("/Pricing");
+      } else {
+        navigate("/Dashboard");
+      }
     }
     
     setIsLoading(false);
@@ -86,6 +90,14 @@ export default function Login() {
             </Button>
           </form>
         </CardContent>
+        <div className="p-6 pt-0 flex justify-center">
+            <p className="text-sm text-slate-600">
+                Não tem uma conta?{" "}
+                <Link to="/Register" className="text-emerald-600 hover:underline font-medium">
+                    Cadastre-se
+                </Link>
+            </p>
+        </div>
       </Card>
     </div>
   );

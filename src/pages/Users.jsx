@@ -1,5 +1,6 @@
 
 import { useState, useEffect } from "react";
+import { api } from "@/api/client";
 import { FinancialTransaction } from "@/entities/FinancialTransaction";
 import { Goal } from "@/entities/Goal";
 import { Debt } from "@/entities/Debt";
@@ -59,6 +60,22 @@ export default function Users() {
     setIsLoading(false);
   };
 
+  const handleDelete = async (user) => {
+    if (confirm(`Tem certeza que deseja excluir o usuário ${user.phone} e TODOS os seus dados? Esta ação não pode ser desfeita.`)) {
+        try {
+            setIsLoading(true);
+            // We delete by phone since that's what we have available in the aggregated view
+            // and we updated the backend to support it
+            await api.delete(`/users/${user.phone}`);
+            await loadUsers();
+        } catch (error) {
+            console.error("Erro ao deletar usuário:", error);
+            alert("Erro ao deletar usuário");
+            setIsLoading(false);
+        }
+    }
+  };
+
   const filteredUsers = users.filter(user => 
     user.phone.includes(searchTerm)
   );
@@ -111,6 +128,7 @@ export default function Users() {
                     user={user}
                     isSelected={selectedUser?.phone === user.phone}
                     onClick={() => setSelectedUser(user)}
+                    onClickDelete={handleDelete}
                   />
                 ))
               )}

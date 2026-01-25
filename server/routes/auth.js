@@ -64,15 +64,22 @@ router.post('/register', async (req, res) => {
         }
       });
 
-      // 3. Create Default Subscription (Free)
-      const freePlan = await prisma.plan.findFirst({ where: { name: 'Free' } });
-      if (freePlan) {
+      // 3. Create Default Subscription (Pro Trial)
+      // Try to find Pro plan first, fallback to Free if not found (or create one?)
+      let plan = await prisma.plan.findFirst({ where: { name: 'Pro' } });
+      if (!plan) {
+         // Fallback to Free or create Pro? Let's fallback to any plan
+         plan = await prisma.plan.findFirst();
+      }
+
+      if (plan) {
         await prisma.subscription.create({
           data: {
             organization_id: org.id,
-            plan_id: freePlan.id,
-            user_email: user.user_phone, // Legacy field
-            status: 'active'
+            plan_id: plan.id,
+            user_email: user.user_phone,
+            status: 'trialing',
+            current_period_end: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days trial
           }
         });
       }
@@ -110,25 +117,42 @@ router.post('/login', async (req, res) => {
           }
         }
       }
-    });
+    }); 
+    
+    if (user) {
+        console.log('DEBUG LOGIN:');
+        console.log('Phone:', phone);
+        console.log('Hash in DB:', user.password_hash);
+        console.log('Password received:', password);
+    }
 
     if (!user) {
       return res.status(401).json({ message: 'User not found' });
     }
 
     let isValid = false;
-    if (user.password_hash && user.password_hash.startsWith('$2a$')) {
+    if (user.password_hash && (user.password_hash.startsWith('$2a$') || user.password_hash.startsWith('$2b$') || user.password_hash.startsWith('$2y$'))) {
         // Bcrypt hash
         isValid = await bcrypt.compare(password, user.password_hash);
+        console.log('Bcrypt compare result:', isValid);
     } else {
         // Legacy or simple check
         const providedHash = Buffer.from(password).toString('base64');
         isValid = providedHash === user.password_hash;
     }
 
-    if (!isValid) {
-      return res.status(401).json({ message: 'Invalid credentials' });
-    }
+      if (!isValid) {
+        return res.status(401).json({ 
+          message: 'Invalid credentials',
+          debug: {
+            receivedPassword: password,
+            receivedPasswordLength: password.length,
+            hashInDb: user.password_hash,
+            hashStartsWith2b: user.password_hash.startsWith('$2b$'),
+            compareResult: isValid
+          }
+        });
+      }
 
     const token = jwt.sign({ id: user.id, phone: user.user_phone }, JWT_SECRET, { expiresIn: '24h' });
 

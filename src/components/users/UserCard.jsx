@@ -1,8 +1,8 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { User, TrendingUp, TrendingDown } from "lucide-react";
+import { User, TrendingUp, TrendingDown, Trash2 } from "lucide-react";
 
-export default function UserCard({ user, isSelected, onClick }) {
+export default function UserCard({ user, isSelected, onClick, onClickDelete }) {
   return (
     <Card 
       className={`border-none shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer ${
@@ -35,19 +35,33 @@ export default function UserCard({ user, isSelected, onClick }) {
               </div>
             </div>
           </div>
-          <div className="text-right">
-            <div className="flex items-center gap-1 mb-1">
-              <TrendingUp className="w-4 h-4 text-emerald-600" />
-              <span className="text-sm font-medium text-emerald-600">
-                R$ {user.income.toFixed(2)}
-              </span>
+          <div className="text-right flex flex-col items-end gap-2">
+            <div>
+                <div className="flex items-center gap-1 mb-1">
+                <TrendingUp className="w-4 h-4 text-emerald-600" />
+                <span className="text-sm font-medium text-emerald-600">
+                    R$ {user.income.toFixed(2)}
+                </span>
+                </div>
+                <div className="flex items-center gap-1">
+                <TrendingDown className="w-4 h-4 text-red-600" />
+                <span className="text-sm font-medium text-red-600">
+                    R$ {user.expenses.toFixed(2)}
+                </span>
+                </div>
             </div>
-            <div className="flex items-center gap-1">
-              <TrendingDown className="w-4 h-4 text-red-600" />
-              <span className="text-sm font-medium text-red-600">
-                R$ {user.expenses.toFixed(2)}
-              </span>
-            </div>
+            {onClickDelete && (
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onClickDelete(user);
+                  }}
+                  className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-red-600 transition-colors z-10"
+                  title="Excluir Usuário e Dados"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+            )}
           </div>
         </div>
       </CardContent>

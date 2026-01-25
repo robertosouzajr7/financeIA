@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const baseURL = 'http://localhost:3000/api';
+const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
 export const api = axios.create({
   baseURL,
@@ -16,6 +16,13 @@ api.interceptors.request.use(
     if (token) {
       config.headers['Authorization'] = `Bearer ${token}`;
     }
+    
+    // Add organization context if selected
+    const orgId = localStorage.getItem('current_org_id');
+    if (orgId) {
+      config.headers['x-org-id'] = orgId;
+    }
+
     return config;
   },
   (error) => Promise.reject(error)

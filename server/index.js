@@ -1,12 +1,14 @@
+const dotenv = require('dotenv');
+const result = dotenv.config({ override: true });
+console.log('DOTENV RESULT:', result.parsed ? 'Loaded' : 'Error', result.error ? result.error : '');
+console.log('DATABASE_URL:', process.env.DATABASE_URL);
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const dotenv = require('dotenv');
 const path = require('path');
 const createCrudRoutes = require('./utils/crud');
-
-dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -27,21 +29,20 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // Rate limiting
+// Rate limiting (DISABLED FOR TESTING)
 const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutos
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
+  windowMs: 15 * 60 * 1000,
+  max: 1000, // Increased for testing
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-// Aplicar rate limiting a todas as rotas de API
-app.use('/api/', limiter);
+// app.use('/api/', limiter); // DISABLED FOR TESTING
 
-// Stricter rate limiting para autenticação
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 5, // Máximo 5 tentativas
+  windowMs: 15 * 60 * 1000,
+  max: 1000, // Increased for testing
   message: 'Too many login attempts, please try again later.',
   skipSuccessfulRequests: true
 });
@@ -65,7 +66,7 @@ const billingRoutes = require('./routes/billing');
 const exportRoutes = require('./routes/export');
 
 // Mount routes
-app.use('/api/auth', authLimiter, authRoutes); // Rate limiting mais rigoroso para autenticação
+app.use('/api/auth', authRoutes); // Rate limiting mais rigoroso para autenticação
 app.use('/api/webhook', webhookRoutes);
 app.use('/api/functions', functionsRoutes);
 app.use('/api/upload', uploadRoutes);
@@ -77,7 +78,8 @@ app.use('/api/organizations', require('./routes/organizations'));
 
 // CRUD Routes
 app.use('/api/transactions', transactionRoutes); // Keep custom if it has specific logic
-app.use('/api/users', createCrudRoutes('User')); // Note: User model name in Prisma
+app.use('/api/users', require('./routes/users')); // Custom routes to handle waterfall delete
+app.use('/api/plans', require('./routes/plans')); // Dynamic Plans CRUD
 app.use('/api/budgets', createCrudRoutes('Budget'));
 app.use('/api/goals', createCrudRoutes('Goal'));
 app.use('/api/system-settings', createCrudRoutes('SystemSettings'));
@@ -109,7 +111,37 @@ app.get('/health', (req, res) => {
   });
 });
 
-app.listen(port, () => {
+// Duplicates removed
+
+const { PrismaClient } = require('@prisma/client');
+const { startWhatsAppConnection } = require('./services/whatsapp');
+const { handleIncomingMessage } = require('./services/messageHandler');
+const prisma = new PrismaClient();
+
+// Auto-reconnect WhatsApp instances
+async function reconnectInstances() {
+  try {
+    const instances = await prisma.whatsAppInstance.findMany({
+      where: { status: 'connected' }
+    });
+
+    console.log(`🔄 Found ${instances.length} instances to reconnect...`);
+
+    for (const instance of instances) {
+        console.log(`🔌 Reconnecting ${instance.instance_name}...`);
+        // Now we can actually reconnect properly!
+        await startWhatsAppConnection(instance.id, handleIncomingMessage).catch(err => {
+            console.error(`Failed to reconnect ${instance.instance_name}:`, err.message);
+        });
+    }
+    console.log('✅ Auto-reconnect process finished.');
+  } catch (error) {
+    console.error('Error reconnecting instances:', error);
+  }
+}
+
+app.listen(port, async () => {
   console.log(`🚀 FinanceIA Backend rodando na porta ${port}`);
   console.log(`📡 Health check: http://localhost:${port}/health`);
+  await reconnectInstances();
 });

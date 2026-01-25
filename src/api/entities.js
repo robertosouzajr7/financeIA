@@ -26,7 +26,9 @@ export const AuthenticatedUser = {
   delete: async (id) => (await api.delete(`/users/${id}`)).data,
 };
 
+const UserEntity = createEntity('users');
 export const User = {
+  ...UserEntity,
   me: async () => (await api.get('/auth/me')).data,
 };
 

@@ -60,6 +60,28 @@ class StripeService {
     return session;
   }
 
+  // Criar Produto e Preço (Plano)
+  async createProductAndPrice(name, description, amount, interval, currency = 'BRL') {
+    // 1. Create Product
+    const product = await stripe.products.create({
+      name,
+      description,
+    });
+
+    // 2. Create Price
+    const price = await stripe.prices.create({
+      unit_amount: Math.round(amount * 100), // cents
+      currency,
+      recurring: { interval },
+      product: product.id,
+    });
+
+    return {
+      stripe_product_id: product.id,
+      stripe_price_id: price.id
+    };
+  }
+
   // Portal do Cliente
   async createPortalSession(organizationId, returnUrl) {
     const org = await prisma.organization.findUnique({ where: { id: organizationId } });

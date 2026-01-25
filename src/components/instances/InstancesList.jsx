@@ -1,9 +1,12 @@
-
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Circle, MoreVertical, Trash2, RotateCw, Smartphone } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Circle, MoreVertical, Trash2, RotateCw, Smartphone, Edit } from "lucide-react";
 import { format } from "date-fns";
 import {
   DropdownMenu,
@@ -14,10 +17,34 @@ import {
 import { WhatsAppInstance } from "@/entities/WhatsAppInstance";
 
 export default function InstancesList({ instances, isLoading, onRefresh }) {
+  const [editingInstance, setEditingInstance] = useState(null);
+  const [newName, setNewName] = useState("");
+
   const handleDelete = async (id) => {
     if (confirm("Tem certeza que deseja deletar esta instância?")) {
       await WhatsAppInstance.delete(id);
       onRefresh();
+    }
+  };
+
+  const handleEditClick = (instance) => {
+    setEditingInstance(instance);
+    setNewName(instance.instance_name);
+  };
+
+  const handleRename = async (e) => {
+    e.preventDefault();
+    if (!editingInstance) return;
+
+    try {
+        await WhatsAppInstance.update(editingInstance.id, {
+            instance_name: newName
+        });
+        setEditingInstance(null);
+        onRefresh();
+    } catch (error) {
+        console.error("Erro ao renomear:", error);
+        alert("Erro ao renomear instância");
     }
   };
 
@@ -92,6 +119,10 @@ export default function InstancesList({ instances, isLoading, onRefresh }) {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => handleEditClick(instance)}>
+                        <Edit className="w-4 h-4 mr-2" />
+                        Renomear
+                      </DropdownMenuItem>
                       <DropdownMenuItem>
                         <RotateCw className="w-4 h-4 mr-2" />
                         Reiniciar
@@ -111,6 +142,28 @@ export default function InstancesList({ instances, isLoading, onRefresh }) {
           </Card>
         ))
       )}
+      <Dialog open={!!editingInstance} onOpenChange={(open) => !open && setEditingInstance(null)}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Renomear Instância</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleRename} className="space-y-4">
+                <div className="space-y-2">
+                    <Label htmlFor="instance_name">Nome da Instância</Label>
+                    <Input 
+                        id="instance_name"
+                        value={newName}
+                        onChange={(e) => setNewName(e.target.value)}
+                        placeholder="Ex: Instância Principal"
+                        required
+                    />
+                </div>
+                <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700">
+                    Salvar
+                </Button>
+            </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

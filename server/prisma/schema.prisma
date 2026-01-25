@@ -119,17 +119,20 @@ model SystemSettings {
 }
 
 model Plan {
-  id            String         @id @default(uuid())
-  name          String
-  description   String?
-  price         Float
-  currency      String         @default("BRL")
-  interval      String         @default("month") // month, year
-  features      String?        // JSON string with features
-  is_active     Boolean        @default(true)
-  created_at    DateTime       @default(now())
-  updated_at    DateTime       @updatedAt
-  subscriptions Subscription[]
+  id               String         @id @default(uuid())
+  name             String
+  description      String?
+  price            Float
+  currency         String         @default("BRL")
+  interval         String         @default("month") // month, year
+  features         String?        // JSON string with features (display bullets)
+  limits           String?        // JSON string with technical limits (e.g. { "max_instances": 1, "max_transactions": 100 })
+  stripe_product_id String?
+  stripe_price_id   String?
+  is_active        Boolean        @default(true)
+  created_at       DateTime       @default(now())
+  updated_at       DateTime       @updatedAt
+  subscriptions    Subscription[]
 }
 
 model Subscription {

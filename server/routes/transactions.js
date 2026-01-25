@@ -4,30 +4,23 @@ const { PrismaClient } = require('@prisma/client');
 const router = express.Router();
 const prisma = new PrismaClient();
 
-// Middleware to verify token (reused from auth, should be in a separate file)
-const authenticateToken = (req, res, next) => {
-    // ... (same as in auth.js, better to extract to middleware/auth.js)
-    // For brevity, copying here or assuming we extract it later
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-    const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-me';
-
-    if (!token) return res.sendStatus(401);
-
-    const jwt = require('jsonwebtoken');
-    jwt.verify(token, JWT_SECRET, (err, user) => {
-        if (err) return res.sendStatus(403);
-        req.user = user;
-        next();
-    });
-};
+const authMiddleware = require('../middleware/authMiddleware');
+const checkLimit = require('../middleware/checkLimit');
 
 // List transactions
-router.get('/', authenticateToken, async (req, res) => {
+router.get('/', authMiddleware, async (req, res) => {
   try {
+    const { _limit } = req.query;
+    
+    // Filter by Organization if context exists, otherwise fall back to user_phone
+    const whereClause = req.organization 
+      ? { organization_id: req.organization.id }
+      : { user_phone: req.user.user_phone };
+
     const transactions = await prisma.financialTransaction.findMany({
-      where: { user_phone: req.user.phone },
+      where: whereClause,
       orderBy: { date: 'desc' },
+      take: _limit ? parseInt(_limit) : undefined
     });
     res.json(transactions);
   } catch (error) {
@@ -36,12 +29,13 @@ router.get('/', authenticateToken, async (req, res) => {
 });
 
 // Create transaction
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', authMiddleware, checkLimit('transactions'), async (req, res) => {
   try {
     const { description, amount, date, category, type } = req.body;
+
     const transaction = await prisma.financialTransaction.create({
       data: {
-        user_phone: req.user.phone,
+        user_phone: req.user.user_phone,
         description,
         amount: parseFloat(amount),
         date: new Date(date),

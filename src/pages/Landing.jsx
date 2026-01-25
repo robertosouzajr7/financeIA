@@ -163,7 +163,7 @@ export default function Landing() {
               transition={{ duration: 0.6, delay: 0.2 }}
               className="flex flex-col sm:flex-row gap-4 justify-center items-center"
             >
-              <Link to={createPageUrl("Pricing")}>
+            <Link to="/onboarding">
                 <Button 
                   size="lg" 
                   className="bg-white text-slate-900 hover:bg-white/90 shadow-2xl text-lg px-8 py-6"
@@ -396,7 +396,7 @@ export default function Landing() {
                       </div>
                     </div>
 
-                    <Link to={createPageUrl("Pricing")}>
+                  <Link to="/onboarding">
                       <Button 
                         className={`w-full py-6 text-lg mb-8 ${
                           plan.highlighted 
