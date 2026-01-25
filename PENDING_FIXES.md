@@ -14,11 +14,53 @@
 POST /api/whatsapp-instances/{id}/reconnect
 ```
 
+### 2. OCR com Confirmação do Usuário
+- ✅ Sistema pendingConfirmations.js integrado
+- ✅ Confirmação SIM/NÃO implementada em processTextMessage
+- ✅ OCR solicita confirmação antes de salvar
+- ✅ Timeout de 5 minutos para confirmações
+
+**Uso:**
+1. Envie foto de comprovante via WhatsApp
+2. Sistema extrai dados e pede confirmação
+3. Responda "SIM" para salvar ou "NÃO" para cancelar
+
+### 3. Transações WhatsApp no Dashboard
+- ✅ organization_id adicionado a todas transações WhatsApp
+- ✅ Helper getOrCreateDefaultOrganization() criado
+- ✅ authMiddleware cria org padrão se necessário
+- ✅ Transações agora aparecem no dashboard
+
+### 4. Dashboard Sincronizado
+- ✅ authMiddleware auto-seleciona primeira organização
+- ✅ req.organization sempre existe para usuários autenticados
+- ✅ Saldos e métricas sincronizados corretamente
+
+### 5. Botão Exportar Excel
+- ✅ Export filtrado por organization_id
+- ✅ Rotas /api/export/transactions/excel e /api/export/transactions/csv corrigidas
+- ✅ exportService.js atualizado
+
+**Uso:**
+```bash
+GET /api/export/transactions/excel?start_date=2024-01-01&end_date=2024-12-31
+GET /api/export/transactions/csv?start_date=2024-01-01
+```
+
+### 6. Filtros de Transações no Dashboard
+- ✅ Filtros implementados: user_phone, start_date, end_date, category, type
+- ✅ Suporte a múltiplos filtros combinados
+- ✅ Base filter por organization_id mantido
+
+**Uso:**
+```bash
+GET /api/transactions?user_phone=5511999999999&category=alimentacao&type=expense
+GET /api/transactions?start_date=2024-01-01&end_date=2024-01-31
+```
+
 ---
 
 ## 🔄 EM ANDAMENTO
-
-### 2. OCR com Confirmação do Usuário
 
 **Status:** Sistema de confirmações criado, falta integração
 
@@ -101,9 +143,9 @@ if (pending && pending.type === 'transaction') {
 
 ---
 
-## 🚧 PENDENTE
+## 🚧 PENDENTE (OPCIONAL)
 
-### 3. Claude AI para Conversas (Áudio, Texto, Imagem)
+### 7. Claude AI para Conversas Completas (Áudio, Texto, Imagem)
 
 **Objetivo:** Usar Claude como IA principal para conversas
 
@@ -177,288 +219,15 @@ if (msg.message.audioMessage) {
 
 ---
 
-### 4. Transações WhatsApp no Dashboard
-
-**Problema:** Transações criadas via WhatsApp não aparecem no dashboard
-
-**Investigação necessária:**
-
-1. Verificar se `organization_id` está sendo salvo corretamente:
-
-```javascript
-// Ao criar transação via WhatsApp:
-const transaction = await prisma.financialTransaction.create({
-    data: {
-        user_phone,
-        organization_id: authUser.organizations[0]?.organization_id, // VERIFICAR ISSO!
-        description,
-        amount,
-        date,
-        category,
-        type,
-        // ...
-    }
-});
-```
-
-2. Verificar query do dashboard:
-
-```javascript
-// Frontend deve filtrar por organization_id
-const transactions = await prisma.financialTransaction.findMany({
-    where: {
-        organization_id: currentOrganizationId // VERIFICAR FILTRO!
-    }
-});
-```
-
-**Correção:**
-
-```javascript
-// Em whatsappMessageProcessor.js - ao criar transação:
-
-// Garantir que organization_id seja sempre preenchido
-const organizationId = authUser.organizations[0]?.organization_id ||
-                       await getDefaultOrganization(authUser.id);
-
-const transaction = await prisma.financialTransaction.create({
-    data: {
-        user_phone,
-        organization_id: organizationId, // SEMPRE preencher
-        description: actionDetection.description || "Transação via WhatsApp",
-        amount: actionDetection.amount,
-        date: new Date().toISOString().split('T')[0],
-        category: actionDetection.category || "outros",
-        type: actionDetection.type,
-        is_recurring: false,
-        priority: "medium",
-        source: "whatsapp", // Marcar origem
-        notes: `Criado via WhatsApp: ${message}`
-    }
-});
-
-// Helper function
-async function getDefaultOrganization(userId) {
-    let org = await prisma.organization.findFirst({
-        where: {
-            members: {
-                some: { user_id: userId }
-            }
-        }
-    });
-
-    if (!org) {
-        // Criar organização padrão
-        org = await prisma.organization.create({
-            data: {
-                name: 'Minha Organização',
-                slug: `org-${userId}`,
-                members: {
-                    create: {
-                        user_id: userId,
-                        role: 'OWNER'
-                    }
-                }
-            }
-        });
-    }
-
-    return org.id;
-}
-```
-
----
-
-### 5. Botão Exportar Excel
-
-**Investigar:**
-- Frontend: Qual componente chama a exportação?
-- Backend: Rota `/api/export/transactions/excel` está funcionando?
-
-**Teste backend:**
-```bash
-curl -X GET "http://localhost:3000/api/export/transactions/excel" \
-  -H "Authorization: Bearer {token}" \
-  --output teste.xlsx
-```
-
-**Possível correção frontend:**
-
-```javascript
-// No componente de transações
-const handleExport = async () => {
-    try {
-        const response = await fetch('/api/export/transactions/excel', {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `transacoes_${new Date().toISOString()}.xlsx`;
-        a.click();
-    } catch (error) {
-        console.error('Erro ao exportar:', error);
-    }
-};
-```
-
----
-
-### 6. Dashboard Dessincronizado
-
-**Problema:** Saldos e métricas zerados mesmo com transações
-
-**Verificar:**
-
-1. **Backend - Rota de analytics:**
-
-```javascript
-// /server/routes/analytics.js
-router.get('/', authMiddleware, async (req, res) => {
-    const organization_id = req.organization?.id;
-
-    const transactions = await prisma.financialTransaction.findMany({
-        where: { organization_id } // VERIFICAR SE ESTÁ FILTRANDO!
-    });
-
-    const totalIncome = transactions
-        .filter(t => t.type === 'income')
-        .reduce((sum, t) => sum + t.amount, 0);
-
-    const totalExpense = transactions
-        .filter(t => t.type === 'expense')
-        .reduce((sum, t) => sum + t.amount, 0);
-
-    res.json({
-        totalIncome,
-        totalExpense,
-        balance: totalIncome - totalExpense,
-        transactionCount: transactions.length
-    });
-});
-```
-
-2. **Frontend - Verificar cache:**
-
-```javascript
-// Usar TanStack Query com refetch
-const { data, refetch } = useQuery({
-    queryKey: ['analytics', organizationId],
-    queryFn: async () => {
-        const res = await fetch('/api/analytics');
-        return res.json();
-    },
-    staleTime: 0, // Sempre buscar dados frescos
-    cacheTime: 0  // Não cachear
-});
-
-// Refetch após criar transação
-await createTransaction();
-refetch();
-```
-
----
-
-### 7. Filtros por Usuário no Dashboard
-
-**Implementação:**
-
-1. **Backend - Adicionar filtros:**
-
-```javascript
-// /server/routes/transactions.js
-router.get('/', authMiddleware, async (req, res) => {
-    const { user_phone, start_date, end_date, category, type } = req.query;
-    const organization_id = req.organization?.id;
-
-    const where = { organization_id };
-
-    if (user_phone) where.user_phone = user_phone;
-    if (category) where.category = category;
-    if (type) where.type = type;
-    if (start_date || end_date) {
-        where.date = {};
-        if (start_date) where.date.gte = new Date(start_date);
-        if (end_date) where.date.lte = new Date(end_date);
-    }
-
-    const transactions = await prisma.financialTransaction.findMany({
-        where,
-        orderBy: { date: 'desc' }
-    });
-
-    res.json(transactions);
-});
-```
-
-2. **Frontend - Componente de filtros:**
-
-```javascript
-function TransactionFilters({ onFilterChange }) {
-    const [filters, setFilters] = useState({
-        user_phone: '',
-        start_date: '',
-        end_date: '',
-        category: '',
-        type: ''
-    });
-
-    const handleChange = (field, value) => {
-        const newFilters = { ...filters, [field]: value };
-        setFilters(newFilters);
-        onFilterChange(newFilters);
-    };
-
-    return (
-        <div className="filters">
-            <select onChange={(e) => handleChange('user_phone', e.target.value)}>
-                <option value="">Todos os usuários</option>
-                {users.map(u => (
-                    <option key={u.user_phone} value={u.user_phone}>
-                        {u.user_name || u.user_phone}
-                    </option>
-                ))}
-            </select>
-
-            <select onChange={(e) => handleChange('type', e.target.value)}>
-                <option value="">Todos os tipos</option>
-                <option value="income">Receitas</option>
-                <option value="expense">Despesas</option>
-            </select>
-
-            <input
-                type="date"
-                value={filters.start_date}
-                onChange={(e) => handleChange('start_date', e.target.value)}
-                placeholder="Data inicial"
-            />
-
-            <input
-                type="date"
-                value={filters.end_date}
-                onChange={(e) => handleChange('end_date', e.target.value)}
-                placeholder="Data final"
-            />
-        </div>
-    );
-}
-```
-
----
-
 ## 📝 ORDEM DE IMPLEMENTAÇÃO RECOMENDADA
 
 1. ✅ **Conexão WhatsApp** - COMPLETO
-2. 🔄 **OCR com Confirmação** - Integrar sistema criado
-3. 🚨 **Transações no Dashboard** - CRÍTICO
-4. 🚨 **Dashboard Sincronizado** - CRÍTICO
-5. 🔧 **Botão Excel** - Investigar e corrigir
-6. 🎨 **Filtros Dashboard** - Melhor UX
-7. 🤖 **Claude AI Conversas** - Feature avançada
+2. ✅ **OCR com Confirmação** - COMPLETO
+3. ✅ **Transações no Dashboard** - COMPLETO
+4. ✅ **Dashboard Sincronizado** - COMPLETO
+5. ✅ **Botão Excel** - COMPLETO
+6. ✅ **Filtros Dashboard** - COMPLETO
+7. 🤖 **Claude AI Conversas** - Feature avançada (opcional)
 
 ---
 
@@ -491,4 +260,6 @@ GET /api/transactions?user_phone=5511999999999
 ---
 
 **Última atualização:** 2026-01-25
-**Status geral:** 1/7 completo, 6 pendentes
+**Status geral:** 6/7 completo (✅ TODOS OS CRÍTICOS RESOLVIDOS!)
+
+**Commit:** 16b8394 - "fix: Corrigir 6 problemas críticos do dashboard e WhatsApp"
