@@ -195,13 +195,31 @@ async function transcribeAudio(audioBuffer, audioType = 'audio/mp3') {
 
     const { GoogleGenerativeAI } = require('@google/generative-ai');
     const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+
+    // CORREÇÃO CRÍTICA: gemini-2.0-flash NÃO suporta áudio!
+    // Usar gemini-1.5-flash que suporta áudio, imagem e texto
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
     // Convert buffer to base64
     const audioBase64 = audioBuffer.toString('base64');
-    
-    // Mime type adjustment if needed (WhatsApp usually sends ogg/opus)
-    const mimeType = audioType.includes('ogg') ? 'audio/ogg' : audioType;
+
+    // Mime type normalization (WhatsApp usa audio/ogg; codecs=opus)
+    let mimeType = audioType;
+
+    // Normalizar mime types comuns
+    if (audioType.includes('ogg')) {
+      mimeType = 'audio/ogg';
+    } else if (audioType.includes('mpeg') || audioType.includes('mp3')) {
+      mimeType = 'audio/mpeg';
+    } else if (audioType.includes('wav')) {
+      mimeType = 'audio/wav';
+    } else if (audioType.includes('webm')) {
+      mimeType = 'audio/webm';
+    } else if (audioType.includes('mp4')) {
+      mimeType = 'audio/mp4';
+    }
+
+    console.log(`🎤 Transcribing audio with Gemini 1.5 Flash (type: ${mimeType})...`);
 
     const result = await model.generateContent([
       {
@@ -210,16 +228,22 @@ async function transcribeAudio(audioBuffer, audioType = 'audio/mp3') {
           data: audioBase64
         }
       },
-      { text: "Transcreva este áudio exatamente como foi falado. Apenas o texto, sem comentários." }
+      { text: "Transcreva este áudio em português brasileiro. Retorne APENAS o texto transcrito, sem comentários adicionais." }
     ]);
 
     const response = await result.response;
     const text = response.text();
-    console.log('🎤 Audio Transcription:', text);
+    console.log('✅ Audio Transcription successful:', text.substring(0, 100) + '...');
     return text;
 
   } catch (error) {
-    console.error('❌ Error transcribing audio:', error);
+    console.error('❌ Error transcribing audio:', error.message);
+
+    // Log detalhado do erro para debug
+    if (error.response) {
+      console.error('Gemini API Error:', JSON.stringify(error.response, null, 2));
+    }
+
     return null;
   }
 }
