@@ -15,12 +15,12 @@ const prisma = new PrismaClient();
  * Exporta transações para Excel
  * @param {Object} params - Parâmetros
  */
-async function exportToExcel({ user_phone, start_date = null, end_date = null }) {
+async function exportToExcel({ organization_id, organization_name, start_date = null, end_date = null }) {
     try {
-        console.log(`📊 Exportando transações de ${user_phone} para Excel`);
+        console.log(`📊 Exportando transações da organização ${organization_name} para Excel`);
 
         // Buscar transações
-        const where = { user_phone };
+        const where = { organization_id };
 
         if (start_date || end_date) {
             where.date = {};
@@ -129,7 +129,7 @@ async function exportToExcel({ user_phone, start_date = null, end_date = null })
         return {
             success: true,
             buffer,
-            filename: `transacoes_${user_phone}_${format(new Date(), 'yyyy-MM-dd')}.xlsx`
+            filename: `transacoes_${organization_name.replace(/[^a-zA-Z0-9]/g, '_')}_${format(new Date(), 'yyyy-MM-dd')}.xlsx`
         };
 
     } catch (error) {
@@ -141,9 +141,9 @@ async function exportToExcel({ user_phone, start_date = null, end_date = null })
 /**
  * Exporta transações para CSV
  */
-async function exportToCSV({ user_phone, start_date = null, end_date = null }) {
+async function exportToCSV({ organization_id, organization_name, start_date = null, end_date = null }) {
     try {
-        const where = { user_phone };
+        const where = { organization_id };
 
         if (start_date || end_date) {
             where.date = {};
@@ -177,7 +177,7 @@ async function exportToCSV({ user_phone, start_date = null, end_date = null }) {
         return {
             success: true,
             data: csv,
-            filename: `transacoes_${user_phone}_${format(new Date(), 'yyyy-MM-dd')}.csv`
+            filename: `transacoes_${organization_name.replace(/[^a-zA-Z0-9]/g, '_')}_${format(new Date(), 'yyyy-MM-dd')}.csv`
         };
 
     } catch (error) {

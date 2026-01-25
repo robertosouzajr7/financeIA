@@ -23,7 +23,14 @@ async function processMessage({ user_phone, message, instance_name, has_media = 
 
         // VERIFICAÇÃO DE USUÁRIO CADASTRADO
         const authUsers = await prisma.user.findMany({
-            where: { user_phone }
+            where: { user_phone },
+            include: {
+                organizations: {
+                    include: {
+                        organization: true
+                    }
+                }
+            }
         });
 
         if (authUsers.length === 0) {
@@ -227,6 +234,44 @@ async function processMessage({ user_phone, message, instance_name, has_media = 
 }
 
 /**
+ * Helper function to get or create default organization for user
+ */
+async function getOrCreateDefaultOrganization(authUser) {
+    // Check if user already has an organization
+    if (authUser.organizations && authUser.organizations.length > 0) {
+        return authUser.organizations[0].organization_id;
+    }
+
+    // Find first organization user is a member of
+    let org = await prisma.organization.findFirst({
+        where: {
+            members: {
+                some: { user_id: authUser.id }
+            }
+        }
+    });
+
+    // Create default organization if none exists
+    if (!org) {
+        org = await prisma.organization.create({
+            data: {
+                name: `Organização de ${authUser.user_name || authUser.user_phone}`,
+                slug: `org-${authUser.id}`,
+                members: {
+                    create: {
+                        user_id: authUser.id,
+                        role: 'OWNER'
+                    }
+                }
+            }
+        });
+        console.log(`✅ Organização padrão criada: ${org.id}`);
+    }
+
+    return org.id;
+}
+
+/**
  * Processa comprovante (imagem ou PDF)
  */
 async function processMediaReceipt({ user_phone, authUser, media_type, media_data, instance_name }) {
@@ -352,10 +397,17 @@ async function processMediaReceipt({ user_phone, authUser, media_type, media_dat
         const extractedText = claudeResponse.data.content[0].text;
         const transactionData = JSON.parse(extractedText);
 
-        // Criar transação
-        const transaction = await prisma.financialTransaction.create({
+        // Get or create organization for user
+        const organizationId = await getOrCreateDefaultOrganization(authUser);
+
+        // NÃO salvar imediatamente - armazenar para confirmação
+        const { storePendingConfirmation } = require('./pendingConfirmations');
+
+        storePendingConfirmation(user_phone, {
+            type: 'transaction',
             data: {
                 user_phone: user_phone,
+                organization_id: organizationId,
                 description: transactionData.description,
                 amount: transactionData.amount,
                 date: transactionData.date || new Date().toISOString().split('T')[0],
@@ -368,13 +420,15 @@ async function processMediaReceipt({ user_phone, authUser, media_type, media_dat
             }
         });
 
+        // Enviar mensagem de confirmação
         const confirmationMessage =
-            `✅ *Comprovante Processado!*\n\n` +
+            `📸 *Dados Extraídos do Comprovante:*\n\n` +
             `💰 *${transactionData.type === 'income' ? 'Receita' : 'Despesa'}:* R$ ${transactionData.amount.toFixed(2)}\n` +
             `📝 *Descrição:* ${transactionData.description}\n` +
             `📂 *Categoria:* ${transactionData.category}\n` +
             `📅 *Data:* ${format(new Date(transactionData.date), 'dd/MM/yyyy', { locale: ptBR })}\n\n` +
-            `Transação registrada com sucesso! ✨`;
+            `✅ *Os dados estão corretos?*\n\n` +
+            `Digite *SIM* para confirmar ou *NÃO* para cancelar.`;
 
         await whatsappMessageService.sendMessage({
             user_phone,
@@ -385,7 +439,7 @@ async function processMediaReceipt({ user_phone, authUser, media_type, media_dat
         return {
             success: true,
             response: confirmationMessage,
-            transaction_created: transaction
+            pending_confirmation: true
         };
 
     } catch (error) {
@@ -413,6 +467,77 @@ async function processMediaReceipt({ user_phone, authUser, media_type, media_dat
  */
 async function processTextMessage({ user_phone, authUser, message, instance_name }) {
     console.log("🔍 Detectando intenção do texto...");
+
+    // Verificar se há confirmação pendente
+    const { getPendingConfirmation, clearPendingConfirmation } = require('./pendingConfirmations');
+    const pending = getPendingConfirmation(user_phone);
+
+    if (pending && pending.type === 'transaction') {
+        const userResponse = message.toLowerCase().trim();
+
+        if (userResponse === 'sim' || userResponse === 's') {
+            // Confirmar e salvar transação
+            const transaction = await prisma.financialTransaction.create({
+                data: pending.data
+            });
+
+            clearPendingConfirmation(user_phone);
+
+            const confirmationMessage =
+                `✅ *Transação registrada com sucesso!*\n\n` +
+                `💰 *${pending.data.type === 'income' ? 'Receita' : 'Despesa'}:* R$ ${pending.data.amount.toFixed(2)}\n` +
+                `📝 *Descrição:* ${pending.data.description}\n` +
+                `📂 *Categoria:* ${pending.data.category}\n` +
+                `📅 *Data:* ${format(new Date(pending.data.date), 'dd/MM/yyyy', { locale: ptBR })}\n\n` +
+                `ID: ${transaction.id}`;
+
+            await whatsappMessageService.sendMessage({
+                user_phone,
+                message: confirmationMessage,
+                instance_name
+            });
+
+            return {
+                success: true,
+                response: confirmationMessage,
+                transaction_created: transaction
+            };
+
+        } else if (userResponse === 'não' || userResponse === 'nao' || userResponse === 'n') {
+            // Cancelar transação
+            clearPendingConfirmation(user_phone);
+
+            const cancelMessage = `❌ *Transação cancelada.*\n\nOs dados não foram salvos.`;
+
+            await whatsappMessageService.sendMessage({
+                user_phone,
+                message: cancelMessage,
+                instance_name
+            });
+
+            return {
+                success: true,
+                response: cancelMessage,
+                transaction_cancelled: true
+            };
+
+        } else {
+            // Resposta inválida
+            const retryMessage = `Por favor, responda apenas *SIM* ou *NÃO*.`;
+
+            await whatsappMessageService.sendMessage({
+                user_phone,
+                message: retryMessage,
+                instance_name
+            });
+
+            return {
+                success: true,
+                response: retryMessage,
+                waiting_for_confirmation: true
+            };
+        }
+    }
 
     const actionDetectionPrompt = `Você é um assistente que identifica se uma mensagem do usuário requer alguma ação no sistema financeiro.
 
@@ -461,9 +586,13 @@ Responda APENAS com o JSON, nada mais.`;
     if (actionDetection && actionDetection.action === "create_transaction") {
         console.log("💰 Criando transação...");
 
+        // Get or create organization for user
+        const organizationId = await getOrCreateDefaultOrganization(authUser);
+
         const transaction = await prisma.financialTransaction.create({
             data: {
                 user_phone: user_phone,
+                organization_id: organizationId,
                 description: actionDetection.description || "Transação via WhatsApp",
                 amount: actionDetection.amount,
                 date: new Date().toISOString().split('T')[0],
@@ -487,9 +616,13 @@ Responda APENAS com o JSON, nada mais.`;
     } else if (actionDetection && actionDetection.action === "create_budget") {
         console.log("📊 Criando orçamento...");
 
+        // Get or create organization for user
+        const organizationId = await getOrCreateDefaultOrganization(authUser);
+
         const budget = await prisma.budget.create({
             data: {
                 user_phone: user_phone,
+                organization_id: organizationId,
                 category: actionDetection.category || "outros",
                 limit_amount: actionDetection.limit_amount,
                 period: "monthly",
@@ -510,9 +643,13 @@ Responda APENAS com o JSON, nada mais.`;
     } else if (actionDetection && actionDetection.action === "create_goal") {
         console.log("🎯 Criando meta...");
 
+        // Get or create organization for user
+        const organizationId = await getOrCreateDefaultOrganization(authUser);
+
         const goal = await prisma.goal.create({
             data: {
                 user_phone: user_phone,
+                organization_id: organizationId,
                 title: actionDetection.title || "Nova meta",
                 description: `Criado via WhatsApp: ${message}`,
                 target_amount: actionDetection.target_amount,

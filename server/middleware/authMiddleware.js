@@ -34,17 +34,46 @@ const authMiddleware = async (req, res, next) => {
 
     req.user = user;
 
-    // Verificar contexto de organização
+    // Verificar/criar contexto de organização
     const orgId = req.headers['x-org-id'];
+
     if (orgId) {
       const membership = user.organizations.find(m => m.organization_id === orgId);
-      
+
       if (!membership) {
         return res.status(403).json({ error: 'Access denied to this organization' });
       }
 
       req.organization = membership.organization;
       req.organizationRole = membership.role;
+    } else if (user.organizations && user.organizations.length > 0) {
+      // Se não foi especificado x-org-id, usar a primeira organização do usuário
+      req.organization = user.organizations[0].organization;
+      req.organizationRole = user.organizations[0].role;
+    } else {
+      // Usuário não tem organização - criar uma padrão
+      console.log(`⚠️  User ${user.user_phone} has no organization - creating default`);
+
+      const orgName = user.user_name ? `${user.user_name}'s Org` : 'My Organization';
+      const slug = `org-${user.id}`;
+
+      const org = await prisma.organization.create({
+        data: {
+          name: orgName,
+          slug: slug,
+          members: {
+            create: {
+              user_id: user.id,
+              role: 'OWNER'
+            }
+          }
+        }
+      });
+
+      req.organization = org;
+      req.organizationRole = 'OWNER';
+
+      console.log(`✅ Default organization created: ${org.id}`);
     }
 
     next();

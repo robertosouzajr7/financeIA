@@ -16,10 +16,14 @@ const exportService = require('../services/exportService');
 router.get('/transactions/excel', authMiddleware, async (req, res) => {
     try {
         const { start_date, end_date } = req.query;
-        const user_phone = req.user.user_phone;
+
+        if (!req.organization) {
+            return res.status(400).json({ error: 'Organization context required' });
+        }
 
         const result = await exportService.exportToExcel({
-            user_phone,
+            organization_id: req.organization.id,
+            organization_name: req.organization.name,
             start_date,
             end_date
         });
@@ -45,10 +49,14 @@ router.get('/transactions/excel', authMiddleware, async (req, res) => {
 router.get('/transactions/csv', authMiddleware, async (req, res) => {
     try {
         const { start_date, end_date } = req.query;
-        const user_phone = req.user.user_phone;
+
+        if (!req.organization) {
+            return res.status(400).json({ error: 'Organization context required' });
+        }
 
         const result = await exportService.exportToCSV({
-            user_phone,
+            organization_id: req.organization.id,
+            organization_name: req.organization.name,
             start_date,
             end_date
         });
