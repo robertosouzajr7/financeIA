@@ -167,27 +167,26 @@ async function generateGeminiResponse(message, context) {
     apiKey: GEMINI_API_KEY,
   });
 
-  // Use Gemini 2.5 Flash - supports text, images, and audio
-  const chat = ai.chats.create({
+  // Build the complete conversation including system prompt, history, and new message
+  let fullMessage = systemPrompt + '\n\n';
+
+  // Add context history
+  for (const msg of context) {
+    fullMessage += `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}\n`;
+  }
+
+  // Add current message
+  fullMessage += `User: ${message}`;
+
+  const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash',
+    contents: fullMessage,
     config: {
       temperature: 0.7,
       maxOutputTokens: 1024,
     },
   });
 
-  // Send system prompt first if no context
-  if (context.length === 0) {
-    await chat.send(systemPrompt);
-  }
-
-  // Build conversation history by sending previous messages
-  for (const msg of context) {
-    await chat.send(msg.content);
-  }
-
-  // Send current message
-  const response = await chat.send(message);
   return response.text;
 }
 
