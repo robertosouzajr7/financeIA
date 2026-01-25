@@ -63,4 +63,40 @@ router.post('/', authMiddleware, checkLimit('transactions'), async (req, res) =>
   }
 });
 
+// Update transaction
+router.put('/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { description, amount, date, category, type } = req.body;
+
+    const data = {};
+    if (description) data.description = description;
+    if (amount) data.amount = parseFloat(amount);
+    if (date) data.date = new Date(date);
+    if (category) data.category = category;
+    if (type) data.type = type;
+
+    const transaction = await prisma.financialTransaction.update({
+      where: { id },
+      data
+    });
+    res.json(transaction);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete transaction
+router.delete('/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await prisma.financialTransaction.delete({
+      where: { id }
+    });
+    res.json({ success: true, id });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
