@@ -18,9 +18,10 @@ export const transactionService = {
     return response.data;
   },
   exportExcel: async (filters) => {
-    const response = await api.post('/transactions/export', filters, {
+    const response = await api.get('/export/transactions/excel', {
+      params: filters,
       responseType: 'blob'
     });
-    return response.data;
+    return { data: response.data }; // Match expected format in Transactions.jsx
   }
 };

@@ -10,9 +10,10 @@ import { Loader2 } from "lucide-react";
 
 const initialFormData = {
   user_phone: "",
-  name: "",
+  description: "",
   amount: "",
   category: "outros",
+  frequency: "mensal",
   due_day: "",
   send_reminder: true,
   is_active: true,
@@ -56,7 +57,7 @@ export default function RecurringExpenseForm({ onSuccess, expenseToEdit, users }
       onSuccess();
     } catch (error) {
       console.error("Erro ao salvar despesa recorrente:", error);
-      alert("Erro ao salvar. Tente novamente.");
+      alert("Erro ao salvar. Verifique os dados e tente novamente.");
     }
     
     setIsSubmitting(false);
@@ -82,15 +83,20 @@ export default function RecurringExpenseForm({ onSuccess, expenseToEdit, users }
             ))}
           </SelectContent>
         </Select>
+        {users.length === 0 && (
+            <p className="text-xs text-red-500">
+                Nenhum usuário disponível. Cadastre usuários no menu Membros.
+            </p>
+        )}
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="name">Nome da Despesa</Label>
+        <Label htmlFor="description">Nome da Despesa</Label>
         <Input
-          id="name"
+          id="description"
           placeholder="Ex: Academia, Netflix, Aluguel"
-          value={formData.name}
-          onChange={(e) => setFormData({...formData, name: e.target.value})}
+          value={formData.description}
+          onChange={(e) => setFormData({...formData, description: e.target.value})}
           required
         />
       </div>
@@ -122,6 +128,20 @@ export default function RecurringExpenseForm({ onSuccess, expenseToEdit, users }
             required
           />
         </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="frequency">Frequência</Label>
+        <Select value={formData.frequency} onValueChange={(value) => setFormData({...formData, frequency: value})}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="semanal">Semanal</SelectItem>
+            <SelectItem value="mensal">Mensal</SelectItem>
+            <SelectItem value="anual">Anual</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="space-y-2">

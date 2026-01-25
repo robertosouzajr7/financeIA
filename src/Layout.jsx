@@ -40,13 +40,8 @@ const navigationItems = [
     icon: Shield,
   },
   {
-    title: "Usuários WhatsApp",
-    url: createPageUrl("AuthenticatedUsers"),
-    icon: Users,
-  },
-  {
     title: "Membros",
-    url: createPageUrl("Users"),
+    url: createPageUrl("AuthenticatedUsers"),
     icon: Users,
   },
   {

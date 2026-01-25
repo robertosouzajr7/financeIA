@@ -16,8 +16,8 @@ const createCrudRoutes = (modelName, idField = 'id') => {
   // List
   router.get('/', async (req, res) => {
     try {
-      // Simple filtering based on query params
-      const where = { ...req.query };
+      // Extract special params
+      const { sort, _limit, ...where } = req.query;
       
       // Handle boolean conversion
       Object.keys(where).forEach(key => {
@@ -26,8 +26,6 @@ const createCrudRoutes = (modelName, idField = 'id') => {
       });
 
       // Filter by organization if context exists and model supports it
-      // Note: This assumes models have organization_id. If not, it might break or need checking.
-      // For now, we apply it if the user is in an org context.
       if (req.organization && modelName !== 'User' && modelName !== 'SystemSettings') {
          where.organization_id = req.organization.id;
       } else if (modelName === 'User') {
@@ -36,7 +34,23 @@ const createCrudRoutes = (modelName, idField = 'id') => {
          // where.id = req.user.id; // Uncomment to restrict
       }
 
-      const items = await model.findMany({ where });
+      // Prepare query options
+      const queryOptions = { where };
+      
+      // Apply sorting
+      if (sort) {
+          const [field, direction] = sort.startsWith('-') 
+              ? [sort.substring(1), 'desc'] 
+              : [sort, 'asc'];
+          queryOptions.orderBy = { [field]: direction };
+      }
+
+      // Apply limit
+      if (_limit) {
+          queryOptions.take = parseInt(_limit);
+      }
+
+      const items = await model.findMany(queryOptions);
       res.json(items);
     } catch (error) {
       res.status(500).json({ error: error.message });

@@ -25,7 +25,7 @@ export default function RecurringExpenses() {
   const loadData = async () => {
     setIsLoading(true);
     const [expensesData, usersData] = await Promise.all([
-      RecurringExpense.list("-created_date"),
+      RecurringExpense.list(),
       AuthenticatedUser.list()
     ]);
     setExpenses(expensesData);
