@@ -161,10 +161,14 @@ async function generateAnthropicResponse(message, context, mediaBuffer = null, m
 }
 
 async function generateGeminiResponse(message, context) {
-  const { GoogleGenerativeAI } = require('@google/generative-ai');
-  
-  const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-  const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
+  const { GoogleGenerativeAI } = require('@google/genai');
+
+  const genAI = new GoogleGenerativeAI({
+    apiKey: GEMINI_API_KEY,
+  });
+
+  // Use Gemini 2.5 Flash - supports text, images, and audio
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
   // Build conversation history
   const history = context.map(msg => ({
@@ -193,12 +197,14 @@ async function transcribeAudio(audioBuffer, audioType = 'audio/mp3') {
       return null;
     }
 
-    const { GoogleGenerativeAI } = require('@google/generative-ai');
-    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+    const { GoogleGenerativeAI } = require('@google/genai');
+    const genAI = new GoogleGenerativeAI({
+      apiKey: GEMINI_API_KEY,
+    });
 
-    // CORREÇÃO CRÍTICA: gemini-2.0-flash NÃO suporta áudio!
-    // Usar gemini-1.5-flash que suporta áudio, imagem e texto
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    // Using official Gemini 2.5 Flash - supports audio, image, and text
+    // NOTE: The legacy @google/generative-ai SDK was deprecated in Aug 2025
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
     // Convert buffer to base64
     const audioBase64 = audioBuffer.toString('base64');
@@ -219,7 +225,7 @@ async function transcribeAudio(audioBuffer, audioType = 'audio/mp3') {
       mimeType = 'audio/mp4';
     }
 
-    console.log(`🎤 Transcribing audio with Gemini 1.5 Flash (type: ${mimeType})...`);
+    console.log(`🎤 Transcribing audio with Gemini 2.5 Flash (type: ${mimeType})...`);
 
     const result = await model.generateContent([
       {
