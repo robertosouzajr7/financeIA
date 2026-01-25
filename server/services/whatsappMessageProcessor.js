@@ -7,8 +7,9 @@
 const { PrismaClient } = require('@prisma/client');
 const { startOfMonth, endOfMonth, format } = require('date-fns');
 const { ptBR } = require('date-fns/locale');
-const { invokeLLM } = require('../utils/llm');
 const whatsappMessageService = require('./whatsappMessageService');
+const conversationService = require('./conversationService');
+const ClaudeClient = require('../utils/claudeClient');
 
 const prisma = new PrismaClient();
 
@@ -195,6 +196,26 @@ async function processMessage({ user_phone, message, instance_name, has_media = 
 
         // USUÁRIO AUTENTICADO - Processar mensagem/mídia
 
+        // ===== PROCESSAR ÁUDIO =====
+        if (has_media && media_type === 'audio') {
+            const audioMessage =
+                "🎤 *Áudio Recebido*\n\n" +
+                "O suporte a áudio será implementado em breve com transcrição automática via Whisper API.\n\n" +
+                "Por enquanto, por favor envie sua mensagem em texto. 😊";
+
+            await whatsappMessageService.sendMessage({
+                user_phone,
+                message: audioMessage,
+                instance_name
+            });
+
+            return {
+                success: true,
+                response: audioMessage,
+                audio_not_supported_yet: true
+            };
+        }
+
         // ===== PROCESSAR IMAGEM OU PDF DE COMPROVANTE (PREMIUM) =====
         if (has_media && (media_type === 'image' || media_type === 'document')) {
             return await processMediaReceipt({
@@ -364,38 +385,11 @@ async function processMediaReceipt({ user_phone, authUser, media_type, media_dat
         // Converter para base64
         const base64Image = mediaBuffer.toString('base64');
 
-        // Chamar Claude API diretamente
-        const axios = require('axios');
-        const claudeResponse = await axios.post('https://api.anthropic.com/v1/messages', {
-            model: 'claude-3-5-sonnet-20241022',
-            max_tokens: 1024,
-            messages: [{
-                role: 'user',
-                content: [
-                    {
-                        type: 'image',
-                        source: {
-                            type: 'base64',
-                            media_type: media_type === 'document' ? 'application/pdf' : 'image/jpeg',
-                            data: base64Image
-                        }
-                    },
-                    {
-                        type: 'text',
-                        text: `Analise este comprovante e extraia: tipo (income/expense), valor em reais, descrição, categoria (moradia/alimentacao/transporte/saude/educacao/familia/lazer/dividas/investimentos/outros), data (YYYY-MM-DD). Responda APENAS com JSON: {"type": "...", "amount": 0, "description": "...", "category": "...", "date": "..."}`
-                    }
-                ]
-            }]
-        }, {
-            headers: {
-                'x-api-key': systemSettings.claude_api_key,
-                'anthropic-version': '2023-06-01',
-                'content-type': 'application/json'
-            }
-        });
+        // Usar ClaudeClient para extrair dados do comprovante
+        const claudeClient = new ClaudeClient(systemSettings.claude_api_key);
+        const mediaTypeHeader = media_type === 'document' ? 'application/pdf' : 'image/jpeg';
 
-        const extractedText = claudeResponse.data.content[0].text;
-        const transactionData = JSON.parse(extractedText);
+        const transactionData = await claudeClient.extractReceiptData(base64Image, mediaTypeHeader);
 
         // Get or create organization for user
         const organizationId = await getOrCreateDefaultOrganization(authUser);
@@ -539,7 +533,20 @@ async function processTextMessage({ user_phone, authUser, message, instance_name
         }
     }
 
-    const actionDetectionPrompt = `Você é um assistente que identifica se uma mensagem do usuário requer alguma ação no sistema financeiro.
+    // Obter configurações do sistema para usar Claude
+    const systemSettings = await prisma.systemSettings.findFirst();
+
+    let actionDetection = null;
+
+    try {
+        if (systemSettings?.claude_api_key) {
+            // Usar ClaudeClient para detectar intenção
+            const claudeClient = new ClaudeClient(systemSettings.claude_api_key);
+            actionDetection = await claudeClient.detectIntent(message);
+        } else {
+            // Fallback para LLM padrão se Claude não estiver configurado
+            const { invokeLLM } = require('../utils/llm');
+            const actionDetectionPrompt = `Você é um assistente que identifica se uma mensagem do usuário requer alguma ação no sistema financeiro.
 
 MENSAGEM DO USUÁRIO: "${message}"
 
@@ -549,30 +556,11 @@ Analise se o usuário está pedindo para:
 3. Criar uma meta financeira
 4. Apenas consultando informações (sem ação necessária)
 
-Se for uma ação, extraia os dados em formato JSON. Se for apenas consulta, retorne {"action": "query"}.
+Responda APENAS com JSON: {"action": "...", ...}`;
 
-EXEMPLOS:
-- "cadastre uma receita de 1000 reais do meu salário" → {"action": "create_transaction", "type": "income", "amount": 1000, "description": "salário", "category": "outros"}
-- "registre uma despesa de 50 reais no supermercado" → {"action": "create_transaction", "type": "expense", "amount": 50, "description": "supermercado", "category": "alimentacao"}
-- "despesa de 250 uber categoria transporte" → {"action": "create_transaction", "type": "expense", "amount": 250, "description": "uber", "category": "transporte"}
-- "crie um orçamento de 500 reais para alimentação" → {"action": "create_budget", "category": "alimentacao", "limit_amount": 500}
-- "quero criar uma meta de 10000 reais para viajar" → {"action": "create_goal", "title": "viajar", "target_amount": 10000}
-- "quais minhas despesas?" → {"action": "query"}
-
-CATEGORIAS VÁLIDAS: moradia, alimentacao, transporte, saude, educacao, familia, lazer, dividas, investimentos, outros
-
-Responda APENAS com o JSON, nada mais.`;
-
-    let actionDetection = null;
-
-    try {
-        const response = await invokeLLM(actionDetectionPrompt, { useInternet: false });
-        // Tentar extrair JSON da resposta
-        const jsonMatch = response.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            actionDetection = JSON.parse(jsonMatch[0]);
-        } else {
-            actionDetection = JSON.parse(response);
+            const response = await invokeLLM(actionDetectionPrompt, { useInternet: false });
+            const jsonMatch = response.match(/\{[\s\S]*\}/);
+            actionDetection = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(response);
         }
 
         console.log("🎯 Ação detectada:", JSON.stringify(actionDetection, null, 2));
@@ -738,8 +726,8 @@ Responda APENAS com o JSON, nada mais.`;
         .map(t => `${format(new Date(t.date), 'dd/MM', { locale: ptBR })}: ${t.description} - R$ ${t.amount.toFixed(2)} (${t.type === 'income' ? 'Receita' : 'Despesa'}, ${t.category})`)
         .join('\n');
 
-    const responsePrompt = `Você é o FinanceIA, um assistente financeiro pessoal via WhatsApp.
-
+    // Construir contexto financeiro
+    const financialContext = `
 DADOS FINANCEIROS ATUALIZADOS (${format(today, "MMMM 'de' yyyy", { locale: ptBR })}):
 
 ═══ RESUMO DO MÊS ATUAL ═══
@@ -761,22 +749,63 @@ ${recentTransactions || 'Nenhuma transação'}
 • Despesas: R$ ${historicExpenses.toFixed(2)}
 • Total de transações: ${transactions.length}
 ${knowledgeContext}
-
-═══ MENSAGEM DO USUÁRIO ═══
-"${message || '[sem mensagem de texto]'}"
-
-INSTRUÇÕES:
-1. Use os valores EXATOS acima
-2. Se houver informações na Base de Conhecimento relevantes para a pergunta, use-as na resposta
-3. Seja amigável e use emojis moderadamente (1-2 por mensagem)
-4. Máximo 4-5 linhas
-5. Responda em português brasileiro
-
-Responda:`;
+`;
 
     console.log("🤖 Gerando resposta...");
 
-    const aiResponse = await invokeLLM(responsePrompt, { useInternet: false });
+    let aiResponse;
+
+    try {
+        if (systemSettings?.claude_api_key) {
+            // Usar ClaudeClient com histórico de conversação
+            const claudeClient = new ClaudeClient(systemSettings.claude_api_key);
+
+            // Obter histórico de conversação
+            const conversationHistory = await conversationService.getConversationHistory(user_phone, 5);
+
+            // Salvar mensagem do usuário
+            await conversationService.saveMessage({
+                user_phone,
+                role: 'user',
+                content: message
+            });
+
+            // Gerar resposta com contexto
+            aiResponse = await claudeClient.chatAboutFinances({
+                message,
+                financialContext,
+                conversationHistory
+            });
+
+            // Salvar resposta do assistente
+            await conversationService.saveMessage({
+                user_phone,
+                role: 'assistant',
+                content: aiResponse
+            });
+        } else {
+            // Fallback para LLM padrão
+            const { invokeLLM } = require('../utils/llm');
+            const responsePrompt = `Você é o FinanceIA, um assistente financeiro pessoal via WhatsApp.
+
+${financialContext}
+
+MENSAGEM DO USUÁRIO: "${message || '[sem mensagem de texto]'}"
+
+INSTRUÇÕES:
+1. Use os valores EXATOS acima
+2. Seja amigável e use emojis moderadamente (1-2 por mensagem)
+3. Máximo 4-5 linhas
+4. Responda em português brasileiro
+
+Responda:`;
+
+            aiResponse = await invokeLLM(responsePrompt, { useInternet: false });
+        }
+    } catch (error) {
+        console.error('❌ Erro ao gerar resposta:', error);
+        aiResponse = 'Desculpe, tive um problema ao processar sua mensagem. Pode tentar novamente?';
+    }
 
     console.log(`✅ Resposta: ${aiResponse.substring(0, 100)}...`);
 
