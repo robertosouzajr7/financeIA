@@ -161,32 +161,34 @@ async function generateAnthropicResponse(message, context, mediaBuffer = null, m
 }
 
 async function generateGeminiResponse(message, context) {
-  const { GoogleGenerativeAI } = require('@google/genai');
+  const { GoogleGenAI } = require('@google/genai');
 
-  const genAI = new GoogleGenerativeAI({
+  const ai = new GoogleGenAI({
     apiKey: GEMINI_API_KEY,
   });
 
   // Use Gemini 2.5 Flash - supports text, images, and audio
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-
-  // Build conversation history
-  const history = context.map(msg => ({
-    role: msg.role === 'user' ? 'user' : 'model',
-    parts: [{ text: msg.content }]
-  }));
-
-  const chat = model.startChat({
-    history,
-    generationConfig: {
+  const chat = ai.chats.create({
+    model: 'gemini-2.5-flash',
+    config: {
       temperature: 0.7,
       maxOutputTokens: 1024,
     },
   });
 
-  const result = await chat.sendMessage(systemPrompt + '\n\n' + message);
-  const response = await result.response;
-  return response.text();
+  // Send system prompt first if no context
+  if (context.length === 0) {
+    await chat.send(systemPrompt);
+  }
+
+  // Build conversation history by sending previous messages
+  for (const msg of context) {
+    await chat.send(msg.content);
+  }
+
+  // Send current message
+  const response = await chat.send(message);
+  return response.text;
 }
 
 // ... existing exports
@@ -197,14 +199,13 @@ async function transcribeAudio(audioBuffer, audioType = 'audio/mp3') {
       return null;
     }
 
-    const { GoogleGenerativeAI } = require('@google/genai');
-    const genAI = new GoogleGenerativeAI({
+    const { GoogleGenAI } = require('@google/genai');
+    const ai = new GoogleGenAI({
       apiKey: GEMINI_API_KEY,
     });
 
     // Using official Gemini 2.5 Flash - supports audio, image, and text
     // NOTE: The legacy @google/generative-ai SDK was deprecated in Aug 2025
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
     // Convert buffer to base64
     const audioBase64 = audioBuffer.toString('base64');
@@ -227,18 +228,27 @@ async function transcribeAudio(audioBuffer, audioType = 'audio/mp3') {
 
     console.log(`🎤 Transcribing audio with Gemini 2.5 Flash (type: ${mimeType})...`);
 
-    const result = await model.generateContent([
-      {
-        inlineData: {
-          mimeType: mimeType,
-          data: audioBase64
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            {
+              inlineData: {
+                mimeType: mimeType,
+                data: audioBase64
+              }
+            },
+            {
+              text: "Transcreva este áudio em português brasileiro. Retorne APENAS o texto transcrito, sem comentários adicionais."
+            }
+          ]
         }
-      },
-      { text: "Transcreva este áudio em português brasileiro. Retorne APENAS o texto transcrito, sem comentários adicionais." }
-    ]);
+      ]
+    });
 
-    const response = await result.response;
-    const text = response.text();
+    const text = response.text;
     console.log('✅ Audio Transcription successful:', text.substring(0, 100) + '...');
     return text;
 
