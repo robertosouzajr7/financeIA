@@ -111,10 +111,103 @@ async function handleIncomingMessage({ from, message, media, mediaType, instance
     }
 
     // Authenticated - Process Message with LLM
-    const messageWithContext = `${orgContext}\n\nUsuário diz: ${message || '[Enviou uma imagem]'}`;
     
-    // Pass media if available
-    const rawLlmResponse = await generateResponse(messageWithContext, [], media, mediaType);
+    // --- MEDIA PROCESSING (Audio & Docs) ---
+    let processedMessage = message; 
+
+    if (media && mediaType) {
+        if (mediaType.startsWith('audio')) {
+            console.log('🎤 Audio detected, transcribing...');
+            const { transcribeAudio } = require('../utils/llm');
+            const transcription = await transcribeAudio(media, mediaType);
+            if (transcription) {
+                processedMessage = `[ÁUDIO TRANSCRITO]: ${transcription}`;
+                console.log('📝 Transcription added to message:', processedMessage);
+            } else {
+                await sock.sendMessage(from, { text: "⚠️ Desculpe, não consegui entender o áudio." });
+                return;
+            }
+        } else if (mediaType === 'application/pdf') {
+             console.log('📄 PDF detected, extracting text...');
+             try {
+                 const pdf = require('pdf-parse');
+                 const data = await pdf(media);
+                 processedMessage = `[CONTEÚDO DO PDF]:\n${data.text}\n\n${message || ''}`;
+                 console.log('📝 PDF text extracted, length:', data.text.length);
+             } catch (err) {
+                 console.error('❌ Error parsing PDF:', err);
+                 await sock.sendMessage(from, { text: "⚠️ Tive um problema ao ler o arquivo PDF." });
+                 return;
+             }
+        }
+        // Images are handled directly by Claude in generateResponse via buffer
+    } else {
+        // If no media, use original message
+        processedMessage = message;
+    }
+
+    // --- 1. Gather Financial Context ---
+    const whereClause = activeOrg 
+        ? { organization_id: activeOrg.id } 
+        : { user_phone: user.user_phone };
+    
+    // A. Current Month Metrics
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthlyTransactions = await prisma.financialTransaction.findMany({
+        where: {
+            ...whereClause,
+            date: { gte: startOfMonth }
+        }
+    });
+
+    let income = 0;
+    let expense = 0;
+    const categoryExpenses = {};
+
+    monthlyTransactions.forEach(t => {
+        if (t.type === 'INCOME') income += t.amount;
+        if (t.type === 'EXPENSE') {
+            expense += t.amount;
+            // Aggregate by category
+            categoryExpenses[t.category] = (categoryExpenses[t.category] || 0) + t.amount;
+        }
+    });
+
+    const balance = income - expense;
+
+    // B. Recent Activity (Last 10)
+    const recentHistory = await prisma.financialTransaction.findMany({
+        where: whereClause,
+        orderBy: { date: 'desc' },
+        take: 10
+    });
+
+    // Format Context String
+    const financialContext = `
+[DADOS FINANCEIROS ATUAIS - ATUALIZADO]
+Mês Atual (${now.toLocaleDateString('pt-BR', { month: 'long' })}):
+- Receitas: R$ ${income.toFixed(2)}
+- Despesas: R$ ${expense.toFixed(2)}
+- Saldo do Mês: R$ ${balance.toFixed(2)}
+
+Gastos por Categoria (Top):
+${Object.entries(categoryExpenses)
+    .sort(([,a], [,b]) => b - a)
+    .slice(0, 5) // Top 5 categories
+    .map(([cat, val]) => `- ${cat}: R$ ${val.toFixed(2)}`)
+    .join('\n') || 'Nenhuma despesa registrada ainda.'}
+
+Últimas 10 Transações:
+${recentHistory.map(t => `- [${new Date(t.date).toLocaleDateString('pt-BR')}] ${t.description} (${t.type === 'INCOME' ? '+' : '-'} R$ ${t.amount.toFixed(2)})`).join('\n')}
+`;
+
+    const messageWithContext = `${orgContext}\n${financialContext}\n\nUsuário diz: ${processedMessage || '[Enviou uma imagem]'}`;
+    
+    // Pass media only if it's an image (for Claude Vision), otherwise we already extracted text
+    const mediaForLLM = (mediaType && mediaType.startsWith('image')) ? media : null;
+    const mediaTypeForLLM = (mediaType && mediaType.startsWith('image')) ? mediaType : null;
+
+    const rawLlmResponse = await generateResponse(messageWithContext, [], mediaForLLM, mediaTypeForLLM);
     console.log('🤖 Raw LLM Response:', rawLlmResponse);
     
     // Check for JSON action block
@@ -159,6 +252,29 @@ async function handleIncomingMessage({ from, message, media, mediaType, instance
                         data: transactionData
                     });
                     console.log('✅ Transaction saved to DB (No Org)! ID:', newTx.id);
+                }
+            } else if (actionData.action === 'delete_transaction') {
+                console.log('🗑️ Executing transaction deletion request');
+                
+                const whereClause = activeOrg 
+                  ? { organization_id: activeOrg.id } 
+                  : { user_phone: user.user_phone };
+
+                // Find the most recent transaction
+                const lastTransaction = await prisma.financialTransaction.findFirst({
+                    where: whereClause,
+                    orderBy: { created_at: 'desc' } // Assuming created_at exists, or use 'date' if not
+                });
+
+                if (lastTransaction) {
+                    await prisma.financialTransaction.delete({
+                        where: { id: lastTransaction.id }
+                    });
+                    console.log('✅ Transaction deleted:', lastTransaction.id);
+                    finalMessage += "\n\n✅ Última transação apagada com sucesso!";
+                } else {
+                    console.log('⚠️ No transaction found to delete');
+                    finalMessage += "\n\n⚠️ Não encontrei nenhuma transação recente para apagar.";
                 }
             }
 

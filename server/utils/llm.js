@@ -6,9 +6,16 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 const systemPrompt = `
-Você é o assistente financeiro inteligente do FinanceIA.
-Seu objetivo é ajudar o usuário a gerenciar suas finanças pessoais.
-Você pode categorizar transações, responder perguntas sobre saldo e gastos, e dar dicas financeiras.
+Você é um Analista Financeiro Pessoal Expert do FinanceIA.
+Você tem acesso TOTAL aos dados financeiros do usuário (fornecidos no contexto da mensagem).
+
+SEU OBJETIVO:
+1. Analisar os dados fornecidos (saldo, gastos por categoria, histórico recente).
+2. Ser PROATIVO: Se o usuário estiver gastando muito em "Lazer" ou se o saldo estiver negativo, ALERTE-O.
+3. Responder perguntas sobre "quanto gastei?", "qual meu saldo?", "posso comprar isso?" com base nos DADOS REAIS que você recebeu.
+4. Categorizar novas transações de forma inteligente.
+
+NÃO INVENTE DADOS. Use estritamente o resumo financeiro fornecido no início de cada prompt.
 
 IMPORTANTE - REGISTRO DE TRANSAÇÕES E OCR:
 Se o usuário solicitar registrar uma despesa ou receita, ou enviar uma imagem de comprovante/nota fiscal, você DEVE extrair os dados e responder COM UM JSON no final da mensagem.
@@ -31,8 +38,30 @@ O formato do JSON deve ser estritamente este:
     "category": "Alimentação" | "Transporte" | "Saúde" | "Lazer" | "Outros" | "Salário" | "Investimentos",
     "date": "YYYY-MM-DD"
   }
+\`\`\`
+{
+  "action": "create_transaction",
+  "data": {
+    "type": "EXPENSE" | "INCOME",
+    "amount": 0.00,
+    "description": "Nome do Estabelecimento ou Descrição",
+    "category": "Alimentação" | "Transporte" | "Saúde" | "Lazer" | "Outros" | "Salário" | "Investimentos",
+    "date": "YYYY-MM-DD"
+  }
 }
 \`\`\`
+
+Para EXCLUSÃO DE TRANSAÇÃO:
+Se o usuário pedir para "deletar a última", "apagar o último registro" ou "desfazer", responda com:
+\`\`\`json
+{
+  "action": "delete_transaction",
+  "data": {
+     "target": "last"
+  }
+}
+\`\`\`
+Não confirme a exclusão no texto antes da ação ser processada, diga algo como "Vou apagar o último registro para você."
 
 Exemplo de resposta:
 "Vi aqui sua nota do Mercado Livre. O total foi R$ 33,32. Vou registrar!"
@@ -46,8 +75,7 @@ async function generateResponse(message, context = [], mediaBuffer = null, media
     if (LLM_PROVIDER === 'gemini' && GEMINI_API_KEY) {
       return await generateGeminiResponse(message, context, mediaBuffer, mediaType);
     } else if (LLM_PROVIDER === 'anthropic' && ANTHROPIC_API_KEY) {
-      // Anthropic also supports vision but let's focus on Gemini first as requested/configured
-      return await generateAnthropicResponse(message, context);
+      return await generateAnthropicResponse(message, context, mediaBuffer, mediaType);
     } else if (OPENAI_API_KEY) {
       return await generateOpenAIResponse(message, context);
     } else {
@@ -55,7 +83,7 @@ async function generateResponse(message, context = [], mediaBuffer = null, media
       return "Desculpe, minha inteligência artificial não está configurada no momento.";
     }
   } catch (error) {
-    console.error('Error generating LLM response:', error);
+    console.error('Error generating LLM response:', error?.response?.data || error.message);
     return "Desculpe, tive um problema ao processar sua mensagem.";
   }
 }
@@ -81,18 +109,46 @@ async function generateOpenAIResponse(message, context) {
   return response.data.choices[0].message.content;
 }
 
-async function generateAnthropicResponse(message, context) {
-    // Adapt context to Anthropic format if needed
-    // For simplicity, just sending the user message for now or basic history
+async function generateAnthropicResponse(message, context, mediaBuffer = null, mediaType = null) {
+    // Construct the user message content
+    const userContent = [];
     
+    // Add image if present
+    if (mediaBuffer && mediaType) {
+        userContent.push({
+            type: "image",
+            source: {
+                type: "base64",
+                media_type: mediaType,
+                data: mediaBuffer.toString('base64')
+            }
+        });
+    }
+
+    // Add text message (always last for good practice, though Claude parses it fine)
+    userContent.push({
+        type: "text",
+        text: message
+    });
+
+    const messages = [
+        ...context.map(msg => ({ 
+            role: msg.role === 'system' ? 'assistant' : msg.role, 
+            content: msg.content 
+        })).filter(m => m.role !== 'assistant' || m.content !== systemPrompt),
+        { 
+            role: "user", 
+            content: userContent // Can be array of blocks
+        }
+    ];
+
+    console.log('Using Anthropic Claude...');
+
     const response = await axios.post('https://api.anthropic.com/v1/messages', {
-        model: "claude-3-haiku-20240307",
+        model: "claude-3-haiku-20240307", // Fast and cheap, supports vision
         max_tokens: 1024,
         system: systemPrompt,
-        messages: [
-            ...context.map(msg => ({ role: msg.role === 'system' ? 'assistant' : msg.role, content: msg.content })).filter(m => m.role !== 'assistant' || m.content !== systemPrompt), // Filter out system prompt from messages if passed in context
-            { role: "user", content: message }
-        ]
+        messages: messages
     }, {
         headers: {
             'x-api-key': ANTHROPIC_API_KEY,
@@ -129,4 +185,43 @@ async function generateGeminiResponse(message, context) {
   return response.text();
 }
 
-module.exports = { generateResponse };
+// ... existing exports
+async function transcribeAudio(audioBuffer, audioType = 'audio/mp3') {
+  try {
+    if (!GEMINI_API_KEY) {
+      console.warn('⚠️ No GEMINI_API_KEY found for audio transcription.');
+      return null;
+    }
+
+    const { GoogleGenerativeAI } = require('@google/generative-ai');
+    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+
+    // Convert buffer to base64
+    const audioBase64 = audioBuffer.toString('base64');
+    
+    // Mime type adjustment if needed (WhatsApp usually sends ogg/opus)
+    const mimeType = audioType.includes('ogg') ? 'audio/ogg' : audioType;
+
+    const result = await model.generateContent([
+      {
+        inlineData: {
+          mimeType: mimeType,
+          data: audioBase64
+        }
+      },
+      { text: "Transcreva este áudio exatamente como foi falado. Apenas o texto, sem comentários." }
+    ]);
+
+    const response = await result.response;
+    const text = response.text();
+    console.log('🎤 Audio Transcription:', text);
+    return text;
+
+  } catch (error) {
+    console.error('❌ Error transcribing audio:', error);
+    return null;
+  }
+}
+
+module.exports = { generateResponse, transcribeAudio };

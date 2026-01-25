@@ -242,11 +242,46 @@ async function startWhatsAppConnection(instanceId, onMessage) {
                   reuploadRequest: sock.updateMediaMessage
                 }
              );
-             mediaType = 'image/jpeg'; // Assuming JPEG for WhatsApp images usually
+             mediaType = msg.message.imageMessage.mimetype || 'image/jpeg';
              console.log('📸 Image downloaded successfully, size:', mediaBuffer.length);
           } catch (err) {
              console.error('❌ Failed to download image:', err);
           }
+        } else if (msg.message.audioMessage) {
+           console.log('✅ Extracted from audioMessage');
+           try {
+              mediaBuffer = await downloadMediaMessage(
+                 msg,
+                 'buffer',
+                 { },
+                 { 
+                   logger,
+                   reuploadRequest: sock.updateMediaMessage
+                 }
+              );
+              mediaType = msg.message.audioMessage.mimetype; // e.g. 'audio/ogg; codecs=opus'
+              console.log(`🎤 Audio downloaded successfully, size: ${mediaBuffer.length}, type: ${mediaType}`);
+           } catch (err) {
+              console.error('❌ Failed to download audio:', err);
+           }
+        } else if (msg.message.documentMessage) {
+            messageText = msg.message.documentMessage.caption || '';
+            console.log('✅ Extracted from documentMessage (caption: ' + messageText + ')');
+            try {
+               mediaBuffer = await downloadMediaMessage(
+                  msg,
+                  'buffer',
+                  { },
+                  { 
+                    logger,
+                    reuploadRequest: sock.updateMediaMessage
+                  }
+               );
+               mediaType = msg.message.documentMessage.mimetype;
+               console.log(`📄 Document downloaded successfully, size: ${mediaBuffer.length}, type: ${mediaType}`);
+            } catch (err) {
+               console.error('❌ Failed to download document:', err);
+            }
         } else if (msg.message.videoMessage?.caption) {
           messageText = msg.message.videoMessage.caption;
           console.log('✅ Extracted from videoMessage caption');
