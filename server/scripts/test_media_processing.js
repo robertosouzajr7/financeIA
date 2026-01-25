@@ -55,18 +55,22 @@ async function testGoogleGenerativeAI() {
     console.log('\n🤖 ===== TESTE: Google Generative AI Library =====\n');
 
     try {
-        const { GoogleGenerativeAI } = require('@google/generative-ai');
-        console.log('✅ @google/generative-ai library loaded successfully');
+        const { GoogleGenerativeAI } = require('@google/genai');
+        console.log('✅ @google/genai library loaded successfully (NEW SDK)');
 
         if (process.env.GEMINI_API_KEY) {
-            const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+            const genAI = new GoogleGenerativeAI({
+                apiKey: process.env.GEMINI_API_KEY,
+            });
             console.log('✅ GoogleGenerativeAI instance created successfully');
 
             // Testar lista de modelos disponíveis
-            console.log('\n📋 Modelos Gemini disponíveis para áudio:');
-            console.log('   - gemini-1.5-flash (recomendado - rápido e suporta áudio)');
-            console.log('   - gemini-1.5-pro (mais preciso, mais caro)');
-            console.log('\n⚠️  gemini-2.0-flash NÃO suporta áudio (apenas texto e imagem)');
+            console.log('\n📋 Modelos Gemini disponíveis para áudio (2026):');
+            console.log('   - gemini-2.5-flash (RECOMENDADO - rápido, suporta áudio)');
+            console.log('   - gemini-2.5-pro (mais preciso, mais caro)');
+            console.log('   - gemini-3-flash-preview (preview, última geração)');
+            console.log('\n⚠️  IMPORTANTE: O SDK @google/generative-ai foi DESCONTINUADO em Ago/2025');
+            console.log('   Agora usando @google/genai (SDK oficial)');
         } else {
             console.log('⚠️  GEMINI_API_KEY not set - skipping API test');
         }
