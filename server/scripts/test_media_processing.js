@@ -55,14 +55,14 @@ async function testGoogleGenerativeAI() {
     console.log('\n🤖 ===== TESTE: Google Generative AI Library =====\n');
 
     try {
-        const { GoogleGenerativeAI } = require('@google/genai');
+        const { GoogleGenAI } = require('@google/genai');
         console.log('✅ @google/genai library loaded successfully (NEW SDK)');
 
         if (process.env.GEMINI_API_KEY) {
-            const genAI = new GoogleGenerativeAI({
+            const ai = new GoogleGenAI({
                 apiKey: process.env.GEMINI_API_KEY,
             });
-            console.log('✅ GoogleGenerativeAI instance created successfully');
+            console.log('✅ GoogleGenAI instance created successfully');
 
             // Testar lista de modelos disponíveis
             console.log('\n📋 Modelos Gemini disponíveis para áudio (2026):');
