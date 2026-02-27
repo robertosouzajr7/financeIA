@@ -10,6 +10,7 @@ import { Search, Crown, User as UserIcon, Mail, Calendar, Edit2, Check, X, Refre
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import { useAuth } from "@/lib/AuthContext";
 import {
   Table,
   TableBody,
@@ -44,24 +45,19 @@ export default function AdminUsers() {
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [isSavingPlan, setIsSavingPlan] = useState(false);
   const navigate = useNavigate();
+  const { isLoadingAuth, isCurrentOrgAdmin } = useAuth();
 
   useEffect(() => {
-    checkAdminAndLoad();
-  }, []);
+    if (isLoadingAuth) return;
 
-  const checkAdminAndLoad = async () => {
-    try {
-      const currentUser = await User.me();
-      if (currentUser.role !== 'admin') {
-        alert("Acesso negado");
-        navigate(createPageUrl("Dashboard"));
-        return;
-      }
-      loadData();
-    } catch (error) {
+    if (!isCurrentOrgAdmin) {
+      alert("Acesso negado: é necessário ser ADMIN da organização atual.");
       navigate(createPageUrl("Dashboard"));
+      return;
     }
-  };
+
+    loadData();
+  }, [isLoadingAuth, isCurrentOrgAdmin]);
 
   const loadData = async () => {
     setIsLoading(true);

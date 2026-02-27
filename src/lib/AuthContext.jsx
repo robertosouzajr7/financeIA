@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { api } from '@/api/client';
+import { getCurrentOrganizationRole } from '@/lib/organizationRole';
 
 const AuthContext = createContext();
 
@@ -137,6 +138,10 @@ export const AuthProvider = ({ children }) => {
       await checkUserAuth();
   };
 
+  const currentOrganizationRole = getCurrentOrganizationRole(user, currentOrganization);
+  const isCurrentOrgAdmin = currentOrganizationRole === 'ADMIN';
+  const isCurrentOrgAdminOrOwner = currentOrganizationRole === 'ADMIN' || currentOrganizationRole === 'OWNER';
+
   return (
     <AuthContext.Provider value={{ 
       user, 
@@ -146,6 +151,9 @@ export const AuthProvider = ({ children }) => {
       authError,
       appPublicSettings,
       currentOrganization, // Exposed
+      currentOrganizationRole,
+      isCurrentOrgAdmin,
+      isCurrentOrgAdminOrOwner,
       logout,
       login,
       switchOrganization, // Exposed

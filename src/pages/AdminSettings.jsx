@@ -1,6 +1,5 @@
 
 import { useState, useEffect } from "react";
-import { User } from "@/entities/User";
 import { SystemSettings } from "@/entities/SystemSettings";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,9 +9,9 @@ import { Switch } from "@/components/ui/switch";
 import { Settings, Upload, Save, Mail, Palette, RefreshCw, Image, Bell, PlayCircle, Clock } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import { useAuth } from "@/lib/AuthContext";
 import integrations from '@/api/integrations';
 import api from '@/api/client';
-import billingService from '@/api/services/billingService';
 
 export default function AdminSettings() {
   const [settings, setSettings] = useState(null);
@@ -24,24 +23,19 @@ export default function AdminSettings() {
   const [testEmail, setTestEmail] = useState("");
   const [reminderResult, setReminderResult] = useState(null);
   const navigate = useNavigate();
+  const { isLoadingAuth, isCurrentOrgAdmin } = useAuth();
 
   useEffect(() => {
-    checkAdminAndLoad();
-  }, []);
+    if (isLoadingAuth) return;
 
-  const checkAdminAndLoad = async () => {
-    try {
-      const currentUser = await User.me();
-      if (currentUser.role !== 'admin') {
-        alert("Acesso negado");
-        navigate(createPageUrl("Dashboard"));
-        return;
-      }
-      loadSettings();
-    } catch (error) {
+    if (!isCurrentOrgAdmin) {
+      alert("Acesso negado: é necessário ser ADMIN da organização atual.");
       navigate(createPageUrl("Dashboard"));
+      return;
     }
-  };
+
+    loadSettings();
+  }, [isLoadingAuth, isCurrentOrgAdmin]);
 
   const loadSettings = async () => {
     setIsLoading(true);

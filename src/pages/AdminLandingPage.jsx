@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { User } from "@/entities/User";
 import { LandingPageSettings } from "@/entities/LandingPageSettings";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Save, Upload, Plus, Trash2, Eye, Layout } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import { useAuth } from "@/lib/AuthContext";
 import { UploadFile } from "@/api/integrations";
 
 export default function AdminLandingPage() {
@@ -18,24 +18,19 @@ export default function AdminLandingPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const navigate = useNavigate();
+  const { isLoadingAuth, isCurrentOrgAdmin } = useAuth();
 
   useEffect(() => {
-    checkAdminAndLoad();
-  }, []);
+    if (isLoadingAuth) return;
 
-  const checkAdminAndLoad = async () => {
-    try {
-      const currentUser = await User.me();
-      if (currentUser.role !== 'admin') {
-        alert("Acesso negado");
-        navigate(createPageUrl("Dashboard"));
-        return;
-      }
-      loadSettings();
-    } catch (error) {
+    if (!isCurrentOrgAdmin) {
+      alert("Acesso negado: é necessário ser ADMIN da organização atual.");
       navigate(createPageUrl("Dashboard"));
+      return;
     }
-  };
+
+    loadSettings();
+  }, [isLoadingAuth, isCurrentOrgAdmin]);
 
   const loadSettings = async () => {
     setIsLoading(true);

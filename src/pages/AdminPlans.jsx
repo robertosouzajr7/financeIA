@@ -8,9 +8,14 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, Edit2, Trash2, Check, X, Shield, Activity, CreditCard } from 'lucide-react';
+import { useAuth } from '@/lib/AuthContext';
+import { useNavigate } from 'react-router-dom';
+import { createPageUrl } from '@/utils';
 
 export default function AdminPlans() {
   const [plans, setPlans] = useState([]);
+  const navigate = useNavigate();
+  const { isLoadingAuth, isCurrentOrgAdmin } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   
@@ -27,8 +32,16 @@ export default function AdminPlans() {
   });
 
   useEffect(() => {
+    if (isLoadingAuth) return;
+
+    if (!isCurrentOrgAdmin) {
+      alert('Acesso negado: é necessário ser ADMIN da organização atual.');
+      navigate(createPageUrl('Dashboard'));
+      return;
+    }
+
     loadPlans();
-  }, []);
+  }, [isLoadingAuth, isCurrentOrgAdmin]);
 
   const loadPlans = async () => {
     setIsLoading(true);
@@ -37,6 +50,10 @@ export default function AdminPlans() {
       setPlans(res.data);
     } catch (error) {
       console.error("Error loading plans", error);
+      if (error.response?.status === 403) {
+        alert('Sem permissão para listar planos nesta organização.');
+        navigate(createPageUrl('Dashboard'));
+      }
     } finally {
       setIsLoading(false);
     }

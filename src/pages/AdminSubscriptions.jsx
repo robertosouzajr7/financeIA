@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { User } from "@/entities/User";
 import { Subscription } from "@/entities/Subscription";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,6 +7,7 @@ import { Search, Crown, DollarSign, Calendar, CheckCircle, XCircle } from "lucid
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import { useAuth } from "@/lib/AuthContext";
 import {
   Table,
   TableBody,
@@ -22,24 +22,19 @@ export default function AdminSubscriptions() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const navigate = useNavigate();
+  const { isLoadingAuth, isCurrentOrgAdmin } = useAuth();
 
   useEffect(() => {
-    checkAdminAndLoad();
-  }, []);
+    if (isLoadingAuth) return;
 
-  const checkAdminAndLoad = async () => {
-    try {
-      const currentUser = await User.me();
-      if (currentUser.role !== 'admin') {
-        alert("Acesso negado");
-        navigate(createPageUrl("Dashboard"));
-        return;
-      }
-      loadData();
-    } catch (error) {
+    if (!isCurrentOrgAdmin) {
+      alert("Acesso negado: é necessário ser ADMIN da organização atual.");
       navigate(createPageUrl("Dashboard"));
+      return;
     }
-  };
+
+    loadData();
+  }, [isLoadingAuth, isCurrentOrgAdmin]);
 
   const loadData = async () => {
     setIsLoading(true);

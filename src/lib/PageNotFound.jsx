@@ -1,23 +1,12 @@
 import { useLocation } from 'react-router-dom';
 
-import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/lib/AuthContext';
 
 
 export default function PageNotFound({}) {
     const location = useLocation();
     const pageName = location.pathname.substring(1);
-
-    const { data: authData, isFetched } = useQuery({
-        queryKey: ['user'],
-        queryFn: async () => {
-            // Using local storage for now, or could call api.get('/auth/me')
-            const userStr = localStorage.getItem('user');
-            if (userStr) {
-                return { user: JSON.parse(userStr), isAuthenticated: true };
-            }
-            return { user: null, isAuthenticated: false };
-        }
-    });
+    const { isAuthenticated, isCurrentOrgAdmin } = useAuth();
     
     return (
         <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50">
@@ -40,7 +29,7 @@ export default function PageNotFound({}) {
                     </div>
                     
                     {/* Admin Note */}
-                    {isFetched && authData.isAuthenticated && authData.user?.role === 'admin' && (
+                    {isAuthenticated && isCurrentOrgAdmin && (
                         <div className="mt-8 p-4 bg-slate-100 rounded-lg border border-slate-200">
                             <div className="flex items-start space-x-3">
                                 <div className="flex-shrink-0 w-5 h-5 rounded-full bg-orange-100 flex items-center justify-center mt-0.5">
