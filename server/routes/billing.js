@@ -10,8 +10,8 @@ router.post('/checkout', authMiddleware, async (req, res) => {
     const organizationId = req.organization.id;
     
     // URLs de retorno (frontend)
-    const successUrl = `${req.headers.origin}/billing/success?session_id={CHECKOUT_SESSION_ID}`;
-    const cancelUrl = `${req.headers.origin}/billing/cancel`;
+    const successUrl = `${req.headers.origin}/PaymentSuccess?session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = `${req.headers.origin}/Pricing`;
 
     const session = await stripeService.createCheckoutSession(organizationId, priceId, successUrl, cancelUrl);
     

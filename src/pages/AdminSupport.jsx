@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { User } from "@/entities/User";
 import { SupportTicket } from "@/entities/SupportTicket";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,6 +8,7 @@ import { Ticket, MessageSquare, Clock, CheckCircle } from "lucide-react";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import { useAuth } from "@/lib/AuthContext";
 import {
   Dialog,
   DialogContent,
@@ -30,24 +30,19 @@ export default function AdminSupport() {
   const [isLoading, setIsLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState("open");
   const navigate = useNavigate();
+  const { user, isLoadingAuth, isCurrentOrgAdmin } = useAuth();
 
   useEffect(() => {
-    checkAdminAndLoad();
-  }, [filterStatus]);
+    if (isLoadingAuth) return;
 
-  const checkAdminAndLoad = async () => {
-    try {
-      const currentUser = await User.me();
-      if (currentUser.role !== 'admin') {
-        alert("Acesso negado");
-        navigate(createPageUrl("Dashboard"));
-        return;
-      }
-      loadTickets();
-    } catch (error) {
+    if (!isCurrentOrgAdmin) {
+      alert("Acesso negado: é necessário ser ADMIN da organização atual.");
       navigate(createPageUrl("Dashboard"));
+      return;
     }
-  };
+
+    loadTickets();
+  }, [filterStatus, isLoadingAuth, isCurrentOrgAdmin]);
 
   const loadTickets = async () => {
     setIsLoading(true);
@@ -88,10 +83,9 @@ export default function AdminSupport() {
     if (!response.trim() || !selectedTicket) return;
 
     try {
-      const currentUser = await User.me();
       await SupportTicket.update(selectedTicket.id, {
         response,
-        assigned_to: currentUser.email,
+        assigned_to: user?.user_phone || 'admin',
         status: 'in_progress'
       });
       

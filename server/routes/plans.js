@@ -8,7 +8,16 @@ const prisma = new PrismaClient();
 
 router.use(authMiddleware);
 
-// Only ADMIN should access this (TODO: Add role check)
+// Apenas ADMIN pode acessar as rotas de planos
+function requireAdminRole(req, res, next) {
+  if (req.organizationRole !== 'ADMIN') {
+    return res.status(403).json({ error: 'Forbidden: ADMIN role required' });
+  }
+
+  return next();
+}
+
+router.use(requireAdminRole);
 
 // LIST plans
 router.get('/', async (req, res) => {
@@ -95,3 +104,4 @@ router.delete('/:id', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.requireAdminRole = requireAdminRole;

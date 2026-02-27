@@ -91,6 +91,8 @@ Veja `.env.example` para lista completa.
 - `GET /api/export/transactions/excel` - Exportar Excel
 - `GET /health` - Health check
 
+> ℹ️ Endpoints de administração de planos (`/api/plans`) exigem perfil `ADMIN` na organização.
+
 ## 🔐 Segurança
 
 ✅ JWT Authentication | ✅ Bcrypt | ✅ Helmet.js | ✅ Rate Limiting | ✅ CORS | ✅ Prisma ORM
@@ -118,7 +120,7 @@ Suporte para Heroku, Railway, DigitalOcean, AWS, GCP, Azure.
 
 ## 📄 Licença
 
-Propriétário. Todos os direitos reservados.
+Proprietário. Todos os direitos reservados.
 
 ## 📞 Suporte
 

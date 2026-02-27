@@ -117,6 +117,11 @@ const adminItems = [
     url: createPageUrl("AdminSettings"),
     icon: Settings,
   },
+  {
+    title: "Planos",
+    url: createPageUrl("AdminPlans"),
+    icon: CreditCard,
+  },
 ];
 
 const InnerLayout = ({ children }) => {

@@ -12,7 +12,7 @@ const billingService = {
   },
 
   getSubscriptions: async () => {
-    const response = await api.get('/billing/subscriptions');
+    const response = await api.get('/subscriptions');
     return response.data;
   },
   
